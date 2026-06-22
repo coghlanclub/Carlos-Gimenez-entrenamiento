@@ -1081,6 +1081,19 @@ function tabataBuildPanel(){
   `;
   if(!tabata.visible) panel.style.display = 'none';
 
+  // Close button inside panel
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '← TV';
+  closeBtn.style.cssText = 'position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:8px;padding:7px 14px;font-family:Inter;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.5px;z-index:2;';
+  closeBtn.onclick = ()=>{
+    tabata.visible = false;
+    tabataStop();
+    panel.style.display = 'none';
+    const btn = document.getElementById('tabataToggleBtn');
+    if(btn){ btn.style.background='rgba(255,255,255,0.1)'; btn.style.borderColor='rgba(255,255,255,0.25)'; btn.style.color='#fff'; }
+  };
+  panel.appendChild(closeBtn);
+
   // Config panel
   const cfg = document.createElement('div');
   cfg.id = 'tabataConfig';
