@@ -717,7 +717,7 @@ async function renderTvScreen() {
       <div class="tv-card-name">${item.student.toUpperCase()}</div>
       <div class="tv-card-day">${savedDay}</div>
       <div style="text-align:left;margin-top:4px">
-        ${dayData.slice(0,6).map(ex=>`<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:20px;color:rgba(240,246,255,0.85);font-weight:500">${ex.name.replace(/^\d+\s*[-–]\s*/,'')}</div>`).join('')}
+        ${dayData.slice(0,6).map(ex=>{const n=ex.name.replace(/^\d+\s*[-–]\s*/,'');const m=ex.series&&ex.reps?`${ex.series}×${ex.reps}`:ex.reps||ex.series||'';return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);gap:16px"><span style="font-size:20px;color:rgba(240,246,255,0.85);font-weight:500">${n}</span>${m?`<span style="font-size:18px;font-weight:700;color:var(--green);white-space:nowrap;font-family:'JetBrains Mono',monospace">${m}</span>`:''}</div>`;}).join('')}
       </div>
     `;
     content.appendChild(card);
