@@ -8,10 +8,9 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
 
 <!-- Firebase -->
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, onSnapshot, query, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-// ⚠️ Reemplazá con tu Firebase del box
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
 const firebaseConfig = {
   apiKey: "AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo",
   authDomain: "box-carlos-gimenez.firebaseapp.com",
@@ -20,19 +19,22 @@ const firebaseConfig = {
   messagingSenderId: "842562346579",
   appId: "1:842562346579:web:73aaaff8293b9fc4bdb0a6"
 };
-let db;
 try {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-} catch(e) { console.warn('Firebase no config:', e.message); }
-window._fbEscuchar = (cb) => {
-  if(!db) { setTimeout(()=>cb([]),500); return ()=>{}; }
-  const q = query(collection(db,'sesiones'), orderBy('timestamp','desc'), limit(200));
-  return onSnapshot(q, snap => cb(snap.docs.map(d=>({id:d.id,...d.data()}))));
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  window._db = firebase.firestore();
+  console.log('Firebase OK');
+} catch(e) { console.warn('Firebase error:', e.message); }
+
+window._fbEscuchar = function(cb) {
+  if(!window._db) { setTimeout(function(){cb([])},500); return function(){}; }
+  return window._db.collection('sesiones')
+    .orderBy('timestamp','desc').limit(200)
+    .onSnapshot(function(snap){ cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})); });
 };
-window._fbFichas = (cb) => {
-  if(!db) { setTimeout(()=>cb([]),500); return ()=>{}; }
-  return onSnapshot(collection(db,'fichas'), snap => cb(snap.docs.map(d=>({id:d.id,...d.data()}))));
+window._fbFichas = function(cb) {
+  if(!window._db) { setTimeout(function(){cb([])},500); return function(){}; }
+  return window._db.collection('fichas')
+    .onSnapshot(function(snap){ cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})); });
 };
 </script>
 
@@ -137,9 +139,9 @@ tr:hover td{background:var(--cel-dim)}
 .prof-ex-ref{font-size:11px;color:var(--green);font-family:var(--mono);min-width:60px;text-align:right}
 
 /* ── TV SCREEN ── */
-#s-tv{padding:0!important;background:var(--navy);min-height:100vh}
+#s-tv{padding:0!important;background:var(--navy);min-height:100vh;overflow-y:auto}
 .tv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:24px;padding:28px;align-content:start}
-.tv-card{background:rgba(255,255,255,0.07);border:1.5px solid rgba(159,200,255,0.25);border-radius:20px;padding:32px 36px;text-align:center}
+.tv-card{background:rgba(255,255,255,0.07);border:1.5px solid rgba(159,200,255,0.25);border-radius:20px;padding:32px 36px;text-align:center;overflow-y:auto;max-height:calc(100vh - 120px)}
 .tv-card-name{font-family:'Bebas Neue','Oswald',sans-serif;font-size:80px;color:var(--white);letter-spacing:6px;margin-bottom:12px;line-height:1}
 .tv-card-day{font-size:24px;font-weight:700;color:var(--green);margin-bottom:20px;letter-spacing:2px;text-transform:uppercase}
 .tv-header-bar{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
@@ -717,7 +719,7 @@ async function renderTvScreen() {
       <div class="tv-card-name">${item.student.toUpperCase()}</div>
       <div class="tv-card-day">${savedDay}</div>
       <div style="text-align:left;margin-top:4px">
-        ${dayData.slice(0,6).map(ex=>{const n=ex.name.replace(/^\d+\s*[-–]\s*/,'');const m=ex.series&&ex.reps?`${ex.series}×${ex.reps}`:ex.reps||ex.series||'';return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);gap:16px"><span style="font-size:20px;color:rgba(240,246,255,0.85);font-weight:500">${n}</span>${m?`<span style="font-size:18px;font-weight:700;color:var(--green);white-space:nowrap;font-family:'JetBrains Mono',monospace">${m}</span>`:''}</div>`;}).join('')}
+        ${dayData.map(ex=>{const n=ex.name.replace(/^\d+\s*[-–]\s*/,'');const m=ex.series&&ex.reps?`${ex.series}×${ex.reps}`:ex.reps||ex.series||'';return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);gap:16px"><span style="font-size:20px;color:rgba(240,246,255,0.85);font-weight:500">${n}</span>${m?`<span style="font-size:18px;font-weight:700;color:var(--green);white-space:nowrap;font-family:'JetBrains Mono',monospace">${m}</span>`:''}</div>`;}).join('')}
       </div>
     `;
     content.appendChild(card);
