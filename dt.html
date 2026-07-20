@@ -7,49 +7,92 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=Oswald:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
 
-<!-- Firebase -->
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
-import { getFirestore, collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+<!-- Firebase via REST API — sin SDK, funciona en todos los navegadores -->
+<script>
+const FB_PROJECT = 'box-carlos-gimenez';
+const FB_KEY = 'AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo';
+const FB_BASE = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo",
-  authDomain: "box-carlos-gimenez.firebaseapp.com",
-  projectId: "box-carlos-gimenez",
-  storageBucket: "box-carlos-gimenez.firebasestorage.app",
-  messagingSenderId: "842562346579",
-  appId: "1:842562346579:web:73aaaff8293b9fc4bdb0a6"
+// Convertir documento Firestore REST a objeto JS simple
+function fsDocToObj(doc) {
+  const obj = {id: doc.name.split('/').pop()};
+  if (!doc.fields) return obj;
+  for (const [k, v] of Object.entries(doc.fields)) {
+    if (v.stringValue !== undefined) obj[k] = v.stringValue;
+    else if (v.integerValue !== undefined) obj[k] = parseInt(v.integerValue);
+    else if (v.doubleValue !== undefined) obj[k] = v.doubleValue;
+    else if (v.booleanValue !== undefined) obj[k] = v.booleanValue;
+    else if (v.timestampValue !== undefined) obj[k] = v.timestampValue;
+    else if (v.mapValue !== undefined) obj[k] = fsDocToObj({name:'', fields: v.mapValue.fields||{}});
+  }
+  return obj;
+}
+
+// Leer colección via REST
+async function fsGet(col) {
+  try {
+    const r = await fetch(`${FB_BASE}/${col}?pageSize=200&key=${FB_KEY}`);
+    if (!r.ok) { console.warn('Firestore GET error', r.status); return []; }
+    const data = await r.json();
+    return (data.documents || []).map(fsDocToObj);
+  } catch(e) { console.warn('Firestore fetch error:', e); return []; }
+}
+
+// Guardar documento via REST
+window._fbGuardar = async (col, datos) => {
+  try {
+    const fields = {};
+    for (const [k, v] of Object.entries(datos)) {
+      if (typeof v === 'string') fields[k] = {stringValue: v};
+      else if (typeof v === 'number') fields[k] = {doubleValue: v};
+      else if (typeof v === 'boolean') fields[k] = {booleanValue: v};
+      else if (v && typeof v === 'object') {
+        const subFields = {};
+        for (const [sk, sv] of Object.entries(v)) {
+          subFields[sk] = {stringValue: String(sv||'')};
+        }
+        fields[k] = {mapValue: {fields: subFields}};
+      }
+    }
+    fields['timestamp'] = {timestampValue: new Date().toISOString()};
+    await fetch(`${FB_BASE}/${col}?key=${FB_KEY}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fields})
+    });
+    return true;
+  } catch(e) { console.warn('Firestore write error:', e); return false; }
 };
 
-try {
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  console.log('Firebase OK');
-
-  window._fbEscuchar = (cb) => {
-    const q = query(collection(db,'sesiones'), orderBy('timestamp','desc'), limit(200));
-    return onSnapshot(q, snap => cb(snap.docs.map(d => ({id:d.id, ...d.data()}))),
-      err => console.warn('Firestore error:', err));
+// Escuchar sesiones (polling cada 30 segundos)
+window._fbEscuchar = (cb) => {
+  let active = true;
+  const poll = async () => {
+    if (!active) return;
+    const docs = await fsGet('sesiones');
+    cb(docs);
+    if (active) setTimeout(poll, 30000);
   };
+  poll();
+  return () => { active = false; };
+};
 
-  window._fbGuardar = async (col, data) => {
-    await addDoc(collection(db, col), {...data, timestamp: serverTimestamp()});
+// Escuchar fichas (polling cada 60 segundos)
+window._fbFichas = (cb) => {
+  let active = true;
+  const poll = async () => {
+    if (!active) return;
+    const docs = await fsGet('fichas');
+    cb(docs);
+    if (active) setTimeout(poll, 60000);
   };
+  poll();
+  return () => { active = false; };
+};
 
-  window._fbFichas = (cb) => {
-    return onSnapshot(collection(db,'fichas'), snap => cb(snap.docs.map(d => ({id:d.id, ...d.data()}))),
-      err => console.warn('Fichas error:', err));
-  };
-
-  // Trigger init now that Firebase is ready
-  if(window._dtInitReady) window._dtInitReady();
-  else window._firebaseReady = true;
-
-} catch(e) {
-  console.warn('Firebase init error:', e.message);
-  if(window._dtInitReady) window._dtInitReady();
-  else window._firebaseReady = true;
-}
+console.log('Firestore REST API listo');
+window._firebaseReady = true;
+if (window._dtInitReady) window._dtInitReady();
 </script>
 
 <style>
