@@ -916,6 +916,8 @@ async function renderCalendario() {
       col.appendChild(slot);
     });
     wrap.appendChild(col);
+  });
+}
 
 async function openSlotModal(dia, hora) {
   const horarios = await getHorarios();
@@ -952,10 +954,6 @@ async function saveSlot() {
 
 function closeSlotModal(){
   document.getElementById('slot-modal').style.display='none';
-}
-
-
-}
 }
 
 // ── FIREBASE: DASHBOARD EN TIEMPO REAL ────────────────────────────────────────
@@ -1042,8 +1040,10 @@ async function init() {
   await renderCalendario();
 }
 // Wait for Firebase module to be ready before init
-window._dtInitReady = function() { init(); };
-if(window._firebaseReady) init();
+window._dtInitReady = function() { 
+  init().catch(e => console.error('Init error:', e.message, e.stack));
+};
+if(window._firebaseReady) init().catch(e => console.error('Init error:', e.message, e.stack));
 </script>
 </body>
 </html>
