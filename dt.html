@@ -8,9 +8,10 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
 
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
+import { getFirestore, collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+
 const firebaseConfig = {
   apiKey: "AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo",
   authDomain: "box-carlos-gimenez.firebaseapp.com",
@@ -19,23 +20,36 @@ const firebaseConfig = {
   messagingSenderId: "842562346579",
   appId: "1:842562346579:web:73aaaff8293b9fc4bdb0a6"
 };
-try {
-  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-  window._db = firebase.firestore();
-  console.log('Firebase OK');
-} catch(e) { console.warn('Firebase error:', e.message); }
 
-window._fbEscuchar = function(cb) {
-  if(!window._db) { setTimeout(function(){cb([])},500); return function(){}; }
-  return window._db.collection('sesiones')
-    .orderBy('timestamp','desc').limit(200)
-    .onSnapshot(function(snap){ cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})); });
-};
-window._fbFichas = function(cb) {
-  if(!window._db) { setTimeout(function(){cb([])},500); return function(){}; }
-  return window._db.collection('fichas')
-    .onSnapshot(function(snap){ cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})); });
-};
+try {
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  console.log('Firebase OK');
+
+  window._fbEscuchar = (cb) => {
+    const q = query(collection(db,'sesiones'), orderBy('timestamp','desc'), limit(200));
+    return onSnapshot(q, snap => cb(snap.docs.map(d => ({id:d.id, ...d.data()}))),
+      err => console.warn('Firestore error:', err));
+  };
+
+  window._fbGuardar = async (col, data) => {
+    await addDoc(collection(db, col), {...data, timestamp: serverTimestamp()});
+  };
+
+  window._fbFichas = (cb) => {
+    return onSnapshot(collection(db,'fichas'), snap => cb(snap.docs.map(d => ({id:d.id, ...d.data()}))),
+      err => console.warn('Fichas error:', err));
+  };
+
+  // Trigger init now that Firebase is ready
+  if(window._dtInitReady) window._dtInitReady();
+  else window._firebaseReady = true;
+
+} catch(e) {
+  console.warn('Firebase init error:', e.message);
+  if(window._dtInitReady) window._dtInitReady();
+  else window._firebaseReady = true;
+}
 </script>
 
 <style>
@@ -897,6 +911,10 @@ function closeSlotModal(){
   document.getElementById('slot-modal').style.display='none';
 }
 
+
+}
+}
+
 // ── FIREBASE: DASHBOARD EN TIEMPO REAL ────────────────────────────────────────
 function initFirebase() {
   if(!window._fbEscuchar) return;
@@ -972,10 +990,6 @@ function initFirebase() {
   });
 }
 
-  });
-
-}
-
 // ── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
   await ensureSeeded();
@@ -984,7 +998,9 @@ async function init() {
   await renderProfStudentList('');
   await renderCalendario();
 }
-window.addEventListener('load', init);
+// Wait for Firebase module to be ready before init
+window._dtInitReady = function() { init(); };
+if(window._firebaseReady) init();
 </script>
 </body>
 </html>
