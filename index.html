@@ -6,51 +6,75 @@
 <title>Box · Entrenamiento</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 
-<!-- Firebase SDK -->
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, addDoc, serverTimestamp, query, where, orderBy, limit, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+<!-- Firebase via REST API — sin SDK -->
+<script>
+const _FB_PROJECT = 'box-carlos-gimenez';
+const _FB_KEY = 'AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo';
+const _FB_BASE = 'https://firestore.googleapis.com/v1/projects/' + _FB_PROJECT + '/databases/(default)/documents';
 
-// ⚠️ REEMPLAZÁ con tu proyecto Firebase del box
-const firebaseConfig = {
-  apiKey: "AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo",
-  authDomain: "box-carlos-gimenez.firebaseapp.com",
-  projectId: "box-carlos-gimenez",
-  storageBucket: "box-carlos-gimenez.firebasestorage.app",
-  messagingSenderId: "842562346579",
-  appId: "1:842562346579:web:73aaaff8293b9fc4bdb0a6"
-};
-
-let db;
-try {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-} catch(e) {
-  console.warn('Firebase no configurado:', e.message);
-}
-
-window._fbGuardar = async (coleccion, datos) => {
-  if(!db) return false;
+// Guardar documento en Firestore
+window._fbGuardar = async (col, datos) => {
   try {
-    await addDoc(collection(db, coleccion), { ...datos, timestamp: serverTimestamp() });
-    return true;
-  } catch(e) { console.error('Firebase error:', e); return false; }
+    const fields = {};
+    for (const [k, v] of Object.entries(datos)) {
+      if (v === null || v === undefined) continue;
+      if (typeof v === 'string') fields[k] = {stringValue: v};
+      else if (typeof v === 'number') fields[k] = {doubleValue: v};
+      else if (typeof v === 'boolean') fields[k] = {booleanValue: v};
+      else if (typeof v === 'object') {
+        const sf = {};
+        for (const [sk, sv] of Object.entries(v)) sf[sk] = {stringValue: String(sv||'')};
+        fields[k] = {mapValue: {fields: sf}};
+      }
+    }
+    fields.timestamp = {timestampValue: new Date().toISOString()};
+    const r = await fetch(_FB_BASE + '/' + col + '?key=' + _FB_KEY, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fields})
+    });
+    return r.ok;
+  } catch(e) { console.warn('Firebase write error:', e); return false; }
 };
 
+// Obtener últimos pesos del alumno
 window._fbUltimoPesos = async (nombre) => {
-  if(!db) return {};
   try {
-    const q = query(collection(db,'sesiones'), where('nombre','==',nombre), orderBy('timestamp','desc'), limit(15));
-    const snap = await getDocs(q);
+    // Query sesiones del alumno ordenadas por timestamp desc
+    const url = _FB_BASE + ':runQuery?key=' + _FB_KEY;
+    const body = {
+      structuredQuery: {
+        from: [{collectionId: 'sesiones'}],
+        where: {
+          fieldFilter: {
+            field: {fieldPath: 'nombre'},
+            op: 'EQUAL',
+            value: {stringValue: nombre}
+          }
+        },
+        orderBy: [{field: {fieldPath: 'timestamp'}, direction: 'DESCENDING'}],
+        limit: 20
+      }
+    };
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) return {};
+    const docs = await r.json();
     const ultimos = {};
-    snap.docs.forEach(d => {
-      const data = d.data();
-      if(data.registros) Object.entries(data.registros).forEach(([ej,val]) => {
-        if(!ultimos[ej] && val && val !== '') ultimos[ej] = val;
+    docs.forEach(item => {
+      if (!item.document) return;
+      const fields = item.document.fields || {};
+      const registros = fields.registros?.mapValue?.fields || {};
+      Object.entries(registros).forEach(([ej, val]) => {
+        const peso = val.stringValue || val.doubleValue || val.integerValue || '';
+        if (!ultimos[ej] && peso && peso !== '') ultimos[ej] = String(peso);
       });
     });
     return ultimos;
-  } catch(e) { console.error('Firebase read error:', e); return {}; }
+  } catch(e) { console.warn('Firebase read error:', e); return {}; }
 };
 </script>
 
