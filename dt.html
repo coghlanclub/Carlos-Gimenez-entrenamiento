@@ -140,7 +140,7 @@ tr:hover td{background:var(--cel-dim)}
     <button class="ni" onclick="goScreen('calendario')"><span style="font-size:15px">◈</span> Calendario</button>
     <button class="ni" onclick="goScreen('fichas')"><span style="font-size:15px">◧</span> Fichas</button>
   </nav>
-  <div class="sb-bot">coghlanclub.github.io<br><a href="/" style="color:var(--green);text-decoration:none">/alumno</a> · /dt</div>
+  <div class="sb-bot">coghlanclub.github.io<br><a href="/" style="color:var(--green);text-decoration:none">/alumno</a> · /dt<br><span id="sync-indicator" style="color:var(--green);font-size:9px">● sincronizando...</span></div>
 </aside>
 <main class="main">
   <div class="topbar">
@@ -384,24 +384,89 @@ async function fsAdd(col, datos) {
   } catch(e) { return false; }
 }
 
-// ── LOCAL STORAGE ─────────────────────────────────────────────────────────────
+// ── STORAGE — FIREBASE SYNC ──────────────────────────────────────────────────
+// Cache en memoria para acceso rápido
+const _mem = {};
+
+// Leer de Firestore (con caché)
+async function fsRead(col, doc) {
+  const k = col+'/'+doc;
+  if (_mem[k] !== undefined) return _mem[k];
+  try {
+    const r = await fetch(FB_BASE+'/'+col+'/'+doc+'?key='+FB_KEY);
+    if (!r.ok) { _mem[k] = null; return null; }
+    const d = await r.json();
+    const raw = d.fields?.data?.stringValue;
+    _mem[k] = raw ? JSON.parse(raw) : null;
+    return _mem[k];
+  } catch(e) { return _mem[k] || null; }
+}
+
+// Escribir en Firestore (y actualizar caché)
+async function fsWrite(col, doc, data) {
+  const k = col+'/'+doc;
+  _mem[k] = data; // actualizar caché inmediatamente
+  try {
+    await fetch(FB_BASE+'/'+col+'/'+doc+'?updateMask.fieldPaths=data&key='+FB_KEY, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fields: {data: {stringValue: JSON.stringify(data)}}})
+    });
+  } catch(e) { 
+    // Fallback a localStorage
+    try { localStorage.setItem('cg_'+col+'_'+doc, JSON.stringify(data)); } catch(e2) {}
+  }
+}
+
+// Fallback a localStorage si Firebase no responde
 function lsGet(k) { try { return JSON.parse(localStorage.getItem('cg_'+k)); } catch(e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem('cg_'+k, JSON.stringify(v)); } catch(e) {} }
 
-async function getStudents() { return lsGet('students') || SEED_DATA.order; }
+// Sincronizar config desde Firebase cada 30 segundos
+async function syncConfig() {
+  ['tipos','estados','tv','horarios'].forEach(k => delete _mem['config/'+k]);
+  SEED_DATA.order.forEach(n => delete _mem['seguimiento/'+n]);
+  // Si hay pantallas activas, refrescar
+  if (document.getElementById('s-profesor')?.classList.contains('on')) renderProfList('');
+  if (document.getElementById('s-calendario')?.classList.contains('on')) renderCalendario();
+  if (document.getElementById('s-seguimiento')?.classList.contains('on')) renderSeguimiento();
+  if (document.getElementById('s-tv')?.classList.contains('on')) renderTvScreen();
+}
+
+// Migrar datos de localStorage a Firebase (primera vez)
+async function migrateFromLS() {
+  const keys = ['tipos','estados','tv-show','horarios-v1'];
+  const fsKeys = ['tipos','estados','tv','horarios'];
+  for (let i=0; i<keys.length; i++) {
+    const local = lsGet(keys[i]);
+    if (local) {
+      const existing = await fsRead('config', fsKeys[i]);
+      if (!existing) await fsWrite('config', fsKeys[i], local);
+    }
+  }
+  // Migrar seguimiento
+  for (const nombre of SEED_DATA.order) {
+    const local = lsGet('seg:'+nombre);
+    if (local) {
+      const existing = await fsRead('seguimiento', nombre);
+      if (!existing) await fsWrite('seguimiento', nombre, local);
+    }
+  }
+}
+
+async function getStudents() { return SEED_DATA.order; }
 async function getRoutine(s, m) {
-  const r = lsGet('routine:'+s+':'+m);
-  if (r) return r;
   if (SEED_DATA.students[s]) return SEED_DATA.students[s];
   return {};
 }
-async function getTipos() { return lsGet('tipos') || {}; }
-async function getEstados() { return lsGet('estados') || {}; }
-async function setEstado(s, v) { const e = await getEstados(); e[s] = v; lsSet('estados', e); }
-async function getTvShow() { return lsGet('tv-show') || []; }
-async function setTvShow(v) { lsSet('tv-show', v); }
-async function getHorarios() { return lsGet('horarios-v1') || {}; }
-async function saveHorarios(h) { lsSet('horarios-v1', h); }
+async function getTipos() { return (await fsRead('config','tipos')) || {}; }
+async function setTipos(v) { await fsWrite('config','tipos', v); }
+async function getEstados() { return (await fsRead('config','estados')) || {}; }
+async function setEstado(s, v) { const e = await getEstados(); e[s]=v; await fsWrite('config','estados',e); }
+async function getTvShow() { return (await fsRead('config','tv')) || []; }
+async function setTvShow(v) { await fsWrite('config','tv',v); }
+async function getHorarios() { return (await fsRead('config','horarios')) || {}; }
+async function saveHorarios(h) { await fsWrite('config','horarios',h); }
 
 // ── SCHEDULE ──────────────────────────────────────────────────────────────────
 const SCHEDULE = {
@@ -697,8 +762,13 @@ async function renderCalendario() {
   const slotMap = {};
   DIAS.forEach(d => SCHEDULE[d].forEach(h => { slotMap[d+':'+h] = []; }));
   students.forEach(s => {
-    const a = horarios[s];
-    if (a && slotMap[a.dia+':'+a.hora] !== undefined) slotMap[a.dia+':'+a.hora].push(s);
+    const slots = horarios[s];
+    if (!slots) return;
+    // Support both old format {dia,hora} and new [{dia,hora},...]
+    const arr = Array.isArray(slots) ? slots : [slots];
+    arr.forEach(a => {
+      if (a && slotMap[a.dia+':'+a.hora] !== undefined) slotMap[a.dia+':'+a.hora].push(s);
+    });
   });
   const wrap = document.getElementById('cal-grid-wrap');
   if (!wrap) return;
@@ -745,21 +815,46 @@ async function openSlotModal(dia, hora) {
   document.getElementById('slot-modal-title').textContent = dia + ' ' + hora + ' (máx ' + cap + ')';
   const sorted = [...students].sort((a,b) => a.localeCompare(b,'es'));
   document.getElementById('slot-modal-body').innerHTML = sorted.map(s => {
-    const cur = horarios[s];
-    const inThis = cur && cur.dia===dia && cur.hora===hora;
-    const inOther = cur && !inThis;
+    const slots = horarios[s];
+    const arr = Array.isArray(slots) ? slots : (slots ? [slots] : []);
+    const inThis = arr.some(a => a.dia===dia && a.hora===hora);
+    // Show other slots as info (not disabled)
+    const otherSlots = arr.filter(a => !(a.dia===dia && a.hora===hora));
+    const otherLabel = otherSlots.map(a => a.dia+' '+a.hora).join(', ');
     return '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer">' +
-      '<input type="checkbox" data-student="' + s + '" ' + (inThis?'checked':'') + ' ' + (inOther?'disabled':'') + ' style="width:15px;height:15px;accent-color:var(--green)">' +
-      '<span style="flex:1;font-size:13px;color:' + (inOther?'var(--muted)':'var(--white)') + '">' + s + '</span>' +
-      (inOther ? '<span style="font-size:10px;color:var(--muted)">' + cur.dia + ' ' + cur.hora + '</span>' : '') + '</label>';
+      '<input type="checkbox" data-student="' + s + '" ' + (inThis?'checked':'') + ' style="width:15px;height:15px;accent-color:var(--green)">' +
+      '<span style="flex:1;font-size:13px;color:var(--white)">' + s + '</span>' +
+      (otherLabel ? '<span style="font-size:10px;color:var(--muted)">también: '+otherLabel+'</span>' : '') + '</label>';
   }).join('');
   document.getElementById('slot-modal-bg').classList.add('on');
 }
 
 async function saveSlot() {
   const {dia, hora, horarios} = slotState;
-  Object.keys(horarios).forEach(s => { if (horarios[s] && horarios[s].dia===dia && horarios[s].hora===hora) delete horarios[s]; });
-  document.querySelectorAll('#slot-modal-body input[type=checkbox]:checked:not(:disabled)').forEach(inp => { horarios[inp.dataset.student] = {dia, hora}; });
+  // Get checked state for each student
+  const checked = new Set();
+  document.querySelectorAll('#slot-modal-body input[type=checkbox]:checked').forEach(inp => checked.add(inp.dataset.student));
+  const unchecked = new Set();
+  document.querySelectorAll('#slot-modal-body input[type=checkbox]:not(:checked)').forEach(inp => unchecked.add(inp.dataset.student));
+  
+  // Update each student's slots array
+  [...checked, ...unchecked].forEach(s => {
+    let arr = horarios[s];
+    // Normalize to array
+    if (!arr) arr = [];
+    else if (!Array.isArray(arr)) arr = [arr];
+    
+    if (checked.has(s)) {
+      // Add this slot if not already there
+      if (!arr.some(a => a.dia===dia && a.hora===hora)) arr.push({dia, hora});
+    } else {
+      // Remove this slot
+      arr = arr.filter(a => !(a.dia===dia && a.hora===hora));
+    }
+    if (arr.length === 0) delete horarios[s];
+    else horarios[s] = arr;
+  });
+  
   await saveHorarios(horarios);
   closeSlotModal();
   renderCalendario();
@@ -845,9 +940,9 @@ async function cargarDashboard() {
 
 
 // ── STORAGE PARA SEGUIMIENTO ──────────────────────────────────────────────────
-function getAlumnoData(nombre) { return lsGet('seg:'+nombre) || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]}; }
-function saveAlumnoData(nombre, data) { lsSet('seg:'+nombre, data); }
-function getWaNum(nombre) { const d = getAlumnoData(nombre); return d.waNum || ''; }
+async function getAlumnoData(nombre) { return (await fsRead('seguimiento', nombre)) || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]}; }
+async function saveAlumnoData(nombre, data) { await fsWrite('seguimiento', nombre, data); }
+async function getWaNum(nombre) { const d = await getAlumnoData(nombre); return d.waNum || ''; }
 
 // ── SEGUIMIENTO VARIABLES ─────────────────────────────────────────────────────
 let segFilter = 'todos';
@@ -1010,7 +1105,7 @@ async function renderSeguimiento() {
         '<div class="seg-acciones">'+
           '<button class="seg-btn" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(20,190,121,.3)" onclick="editarAlumno(\''+nombre+'\')">✏️ Editar perfil</button>'+
           '<button class="seg-btn" style="background:var(--cel-dim);color:var(--cel);border:1px solid rgba(159,200,255,.2)" onclick="generarReporte(\''+nombre+'\')" >📄 Reporte mensual</button>'+
-          (getWaNum(nombre) ?
+          (d.waNum ?
             '<button class="seg-btn" style="background:rgba(37,211,102,.1);color:#25D366;border:1px solid rgba(37,211,102,.3)" onclick="abrirWa(\''+nombre+'\')">💬 WhatsApp</button>' :
             '<button class="seg-btn" style="background:rgba(37,211,102,.1);color:#25D366;border:1px solid rgba(37,211,102,.3)" onclick="pedirWa(\''+nombre+'\')">💬 Agregar WA</button>')+
         '</div>'+
@@ -1194,11 +1289,14 @@ function pedirWa(nombre) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
+  // Migrar datos locales a Firebase (primera vez)
+  await migrateFromLS();
   await renderProfList('');
   await renderCalendario();
   await cargarDashboard();
-  // Refrescar datos cada 30 segundos
+  // Sincronizar datos cada 30 segundos
   setInterval(cargarDashboard, 30000);
+  setInterval(syncConfig, 30000);
 }
 
 init().catch(e => console.error('Init error:', e));
