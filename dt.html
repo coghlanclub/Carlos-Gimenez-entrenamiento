@@ -190,7 +190,10 @@ tr:hover td{background:var(--cel-dim)}
   <div class="screen" id="s-profesor">
     <div class="prof-layout">
       <div class="prof-left">
-        <div class="prof-search"><input type="text" placeholder="Buscar alumno..." id="prof-search" oninput="renderProfList(this.value)"></div>
+        <div class="prof-search" style="display:flex;gap:6px;align-items:center">
+        <input type="text" placeholder="Buscar alumno..." id="prof-search" oninput="renderProfList(this.value)" style="flex:1">
+        <button onclick="openAddStudent()" style="background:var(--green);color:var(--bg);border:none;border-radius:8px;padding:6px 10px;font-size:18px;cursor:pointer;font-weight:700;line-height:1;flex-shrink:0">+</button>
+      </div>
         <div class="prof-student-list" id="prof-list"></div>
       </div>
       <div class="prof-right" id="prof-right">
@@ -291,6 +294,26 @@ tr:hover td{background:var(--cel-dim)}
 </div>
 
 <!-- SLOT MODAL -->
+<!-- MODAL AGREGAR ALUMNO -->
+<div style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;padding:16px" id="add-student-modal">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:340px">
+    <div style="padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0">
+      <div style="font-family:Bebas Neue,sans-serif;font-size:18px;color:var(--white);letter-spacing:1px">AGREGAR ALUMNO</div>
+      <button onclick="closeAddStudent()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:18px">
+      <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Nombre</label>
+      <input type="text" id="new-student-name" placeholder="Nombre y apellido" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;font-size:14px;color:var(--white);font-family:Inter,sans-serif;outline:none;margin-bottom:14px">
+      <label style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tipo</label>
+      <div style="display:flex;gap:8px;margin-bottom:18px">
+        <button id="tipo-box-btn" onclick="selectTipo('box')" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid var(--green);background:var(--green-bg);color:var(--green);font-weight:700;cursor:pointer;font-family:Inter,sans-serif">BOX</button>
+        <button id="tipo-ind-btn" onclick="selectTipo('individual')" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-weight:600;cursor:pointer;font-family:Inter,sans-serif">INDIVIDUAL</button>
+      </div>
+      <button onclick="confirmarAddStudent()" style="width:100%;background:var(--green);color:var(--bg);border:none;border-radius:10px;padding:11px;font-family:Bebas Neue,sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer">Agregar alumno</button>
+    </div>
+  </div>
+</div>
+
 <div class="slot-modal-bg" id="slot-modal-bg">
   <div class="slot-modal">
     <div class="slot-modal-head">
@@ -314,6 +337,13 @@ const SEED_MONTH = 'Junio 2026';
 
 // ── PRE-CARGA DE DATOS DE SEGUIMIENTO ────────────────────────────────────────
 (function() {
+  // Pre-cargar alumnos extra si no están ya
+  const EXTRA_STUDENTS = ['Lea', 'Viviana', 'Lucas'];
+  const extraKey = 'cg_config_extra-students';
+  const existing = JSON.parse(localStorage.getItem(extraKey) || '[]');
+  const merged = [...new Set([...existing, ...EXTRA_STUDENTS])];
+  if (merged.length !== existing.length) localStorage.setItem(extraKey, JSON.stringify(merged));
+  
   const SEG_DEFAULTS = {"Agustina": {"metas": [{"texto": "Ascenso Volcán Lanín", "fecha": "ene/2027"}, {"texto": "Mantener rendimiento hockey hasta fin de torneo", "fecha": "ago/2026"}], "fase": "PPG 3×10 RPE4", "faseInicio": "jul/2026", "faseSig": "PEG 4×8", "faseSesiones": 2, "waNum": "", "notas": [{"fecha": "20/07/2026", "texto": "Fase compatible con hockey (Mi/Vi/Sa). Días extra disponibles Lu, Mar o Jue. Domingos aeróbico optativo (tenis/padel)."}, {"fecha": "20/07/2026", "texto": "Vacaciones 20-24/jul. Retoma hockey el 29/jul. Primer partido post-receso: 8/ago. Vacaciones personales 10-16/ago."}]}, "Valentina": {"metas": [{"texto": "Mejorar rendimiento en natación", "fecha": ""}], "fase": "Fuerza base — dorsal dominante", "faseInicio": "jul/2026", "faseSig": "", "faseSesiones": 3, "waNum": "", "notas": []}, "Lud": {"metas": [{"texto": "Mejorar técnica en levantamiento olímpico", "fecha": ""}], "fase": "Plan fuerza puntos débiles — 12 sesiones", "faseInicio": "jul/2026", "faseSig": "", "faseSesiones": 3, "waNum": "", "notas": []}, "Cami": {"metas": [{"texto": "Rehabilitación y fuerza funcional — Espondilolisis L5", "fecha": ""}], "fase": "Funcional adaptado — sin carga lumbar", "faseInicio": "jul/2026", "faseSig": "", "faseSesiones": 3, "waNum": "", "notas": [{"fecha": "20/07/2026", "texto": "Diagnóstico: Espondilolisis L5. Evitar hiperextensión lumbar, cargas axiales y movimientos explosivos de columna."}]}, "Santiago": {"metas": [{"texto": "Fuerza y potencia general", "fecha": ""}], "fase": "Fuerza — 6 días semanales", "faseInicio": "jun/2026", "faseSig": "", "faseSesiones": 6, "waNum": "", "notas": []}};
   Object.entries(SEG_DEFAULTS).forEach(([nombre, data]) => {
     const key = 'cg_seg:' + nombre;
@@ -454,7 +484,31 @@ async function migrateFromLS() {
   }
 }
 
-async function getStudents() { return SEED_DATA.order; }
+async function getStudents() {
+  let extra = await fsRead('config','extra-students');
+  // Fallback to localStorage if Firebase not available
+  if (!extra) {
+    try { extra = JSON.parse(localStorage.getItem('cg_config_extra-students') || '[]'); } catch(e) { extra = []; }
+  }
+  const all = [...SEED_DATA.order];
+  (extra||[]).forEach(s => { if (!all.includes(s)) all.push(s); });
+  return all;
+}
+async function addStudent(nombre, tipo) {
+  let extra = await fsRead('config','extra-students');
+  if (!extra) {
+    try { extra = JSON.parse(localStorage.getItem('cg_config_extra-students') || '[]'); } catch(e) { extra = []; }
+  }
+  if (!SEED_DATA.order.includes(nombre) && !extra.includes(nombre)) {
+    extra.push(nombre);
+    await fsWrite('config','extra-students', extra);
+    // Also save to localStorage as backup
+    try { localStorage.setItem('cg_config_extra-students', JSON.stringify(extra)); } catch(e) {}
+  }
+  const tipos = await getTipos();
+  tipos[nombre] = tipo || 'box';
+  await setTipos(tipos);
+}
 async function getRoutine(s, m) {
   if (SEED_DATA.students[s]) return SEED_DATA.students[s];
   return {};
@@ -943,6 +997,42 @@ async function cargarDashboard() {
 async function getAlumnoData(nombre) { return (await fsRead('seguimiento', nombre)) || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]}; }
 async function saveAlumnoData(nombre, data) { await fsWrite('seguimiento', nombre, data); }
 async function getWaNum(nombre) { const d = await getAlumnoData(nombre); return d.waNum || ''; }
+
+// ── AGREGAR ALUMNO ────────────────────────────────────────────────────────────
+let _newTipo = 'box';
+
+function openAddStudent() {
+  document.getElementById('add-student-modal').style.display = 'flex';
+  document.getElementById('new-student-name').value = '';
+  selectTipo('box');
+  setTimeout(() => document.getElementById('new-student-name').focus(), 100);
+}
+
+function closeAddStudent() {
+  document.getElementById('add-student-modal').style.display = 'none';
+}
+
+function selectTipo(tipo) {
+  _newTipo = tipo;
+  const boxBtn = document.getElementById('tipo-box-btn');
+  const indBtn = document.getElementById('tipo-ind-btn');
+  if (tipo === 'box') {
+    boxBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1.5px solid var(--green);background:var(--green-bg);color:var(--green);font-weight:700;cursor:pointer;font-family:Inter,sans-serif';
+    indBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-weight:600;cursor:pointer;font-family:Inter,sans-serif';
+  } else {
+    indBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1.5px solid var(--cel);background:var(--cel-dim);color:var(--cel);font-weight:700;cursor:pointer;font-family:Inter,sans-serif';
+    boxBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-weight:600;cursor:pointer;font-family:Inter,sans-serif';
+  }
+}
+
+async function confirmarAddStudent() {
+  const nombre = document.getElementById('new-student-name').value.trim();
+  if (!nombre) { document.getElementById('new-student-name').style.borderColor='var(--red)'; return; }
+  await addStudent(nombre, _newTipo);
+  closeAddStudent();
+  await renderProfList('');
+  showToast('✓ ' + nombre + ' agregado');
+}
 
 // ── SEGUIMIENTO VARIABLES ─────────────────────────────────────────────────────
 let segFilter = 'todos';
