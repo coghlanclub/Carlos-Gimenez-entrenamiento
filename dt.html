@@ -96,6 +96,23 @@ tr:hover td{background:var(--cel-dim)}
 .slot-modal-head{padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .slot-modal-body{overflow-y:auto;padding:14px 18px;flex:1}
 .slot-modal-foot{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px}
+.seg-filter{background:var(--bg2);border:1px solid var(--border);color:var(--text2);border-radius:99px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s}
+.seg-filter.on{background:var(--green);color:var(--bg);border-color:var(--green)}
+.seg-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden}
+.seg-card-header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:12px}
+.seg-card-header:hover{background:var(--cel-dim)}
+.seg-nombre{font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--white);letter-spacing:1px}
+.seg-meta-tag{display:inline-flex;align-items:center;gap:4px;background:var(--amber-bg);border:1px solid rgba(245,166,35,.3);color:var(--amber);font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px}
+.seg-meta-tag.verde{background:var(--green-bg);border-color:rgba(20,190,121,.3);color:var(--green)}
+.seg-body{display:none;padding:0 18px 16px;border-top:1px solid var(--border)}
+.seg-body.open{display:block}
+.seg-section{margin-top:14px}
+.seg-section-title{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.seg-stat{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border-radius:8px;padding:8px 12px;margin:4px}
+.seg-stat-val{font-family:Bebas Neue,sans-serif;font-size:24px;color:var(--white);line-height:1}
+.seg-stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase}
+.seg-acciones{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.seg-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:Inter,sans-serif}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--green);color:var(--bg);padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;opacity:0;transform:translateY(8px);transition:all .3s;z-index:500;pointer-events:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes mascot-breathe{0%{transform:scale(1) rotate(-2deg)}100%{transform:scale(1.08) rotate(2deg)}}
@@ -198,15 +215,43 @@ tr:hover td{background:var(--cel-dim)}
 
   <!-- SEGUIMIENTO -->
   <div class="screen" id="s-seguimiento">
-    <div class="metrics">
-      <div class="metric"><div class="metric-val" style="color:var(--cel)" id="seg-hoy">—</div><div class="metric-lbl">Sesiones hoy</div></div>
-      <div class="metric"><div class="metric-val" style="color:var(--green)" id="seg-ok">—</div><div class="metric-lbl">Sin molestias</div></div>
-      <div class="metric"><div class="metric-val" style="color:var(--amber)" id="seg-mol">—</div><div class="metric-lbl">Con molestias</div></div>
-      <div class="metric"><div class="metric-val" style="color:var(--red)" id="seg-les">—</div><div class="metric-lbl">Lesionados</div></div>
+    <!-- Filtros y búsqueda -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="seg-search" placeholder="Buscar alumno..." oninput="renderSeguimiento()" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;width:200px">
+      <button class="seg-filter on" data-f="todos" onclick="setSegFilter('todos',this)">Todos</button>
+      <button class="seg-filter" data-f="activos" onclick="setSegFilter('activos',this)">Con sesiones</button>
+      <button class="seg-filter" data-f="sin" onclick="setSegFilter('sin',this)">Sin sesiones</button>
+      <button class="seg-filter" data-f="metas" onclick="setSegFilter('metas',this)">Con metas</button>
     </div>
-    <div class="tbl-wrap">
-      <table><thead><tr><th>Alumno</th><th>Clase</th><th>Fecha</th><th>Estado</th><th>RPE</th><th>Nota</th></tr></thead>
-      <tbody id="seg-tbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr></tbody></table>
+    <!-- Lista de alumnos con seguimiento -->
+    <div id="seg-lista"></div>
+    <!-- Modal reporte -->
+    <div id="reporte-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:600px;max-height:85vh;overflow-y:auto">
+        <div style="padding:16px 20px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;border-radius:16px 16px 0 0">
+          <div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--white);letter-spacing:1px" id="reporte-title">REPORTE</div>
+          <button onclick="closeReporte()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+        </div>
+        <div style="padding:20px" id="reporte-body"></div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px">
+          <button onclick="copiarReporte()" class="btn btn-ghost" style="flex:1">📋 Copiar texto</button>
+          <button onclick="compartirWhatsapp()" class="btn btn-primary" style="flex:1">💬 WhatsApp</button>
+        </div>
+      </div>
+    </div>
+    <!-- Modal editar alumno -->
+    <div id="edit-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:500px;max-height:85vh;overflow-y:auto">
+        <div style="padding:16px 20px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;border-radius:16px 16px 0 0">
+          <div style="font-family:Bebas Neue,sans-serif;font-size:20px;color:var(--white);letter-spacing:1px" id="edit-title">EDITAR ALUMNO</div>
+          <button onclick="closeEdit()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer">✕</button>
+        </div>
+        <div style="padding:20px" id="edit-body"></div>
+        <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px">
+          <button onclick="closeEdit()" class="btn btn-ghost">Cancelar</button>
+          <button onclick="guardarEdit()" class="btn btn-primary" style="flex:1">Guardar</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -372,6 +417,7 @@ function goScreen(id) {
   if (id === 'profesor') renderProfScreen();
   if (id === 'tv') renderTvScreen();
   if (id === 'calendario') renderCalendario();
+  if (id === 'seguimiento') renderSeguimiento();
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
@@ -773,19 +819,10 @@ async function cargarDashboard() {
   }).join('');
 
   // Seguimiento
-  document.getElementById('seg-hoy').textContent = hoyDocs.length;
-  document.getElementById('seg-ok').textContent = hoyDocs.filter(d => (d.reporte&&d.reporte.estado||'').includes('Sin')).length;
-  document.getElementById('seg-mol').textContent = hoyDocs.filter(d => (d.reporte&&d.reporte.estado||'').includes('leve')||(d.reporte&&d.reporte.estado||'').includes('prev')).length;
-  document.getElementById('seg-les').textContent = hoyDocs.filter(d => (d.reporte&&d.reporte.estado||'').includes('Lesion')).length;
-  const stbody = document.getElementById('seg-tbody');
-  if (stbody) stbody.innerHTML = sesiones.slice(0,80).map(d =>
-    '<tr><td class="td-n" style="font-size:12px">' + (d.nombre||'?') + '</td>' +
-    '<td><span class="badge bc" style="font-size:9px">' + ((d.dia||'—').split(' · ')[0]) + '</span></td>' +
-    '<td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.fecha||'—') + '</td>' +
-    '<td style="font-size:11px;color:' + ((d.reporte&&d.reporte.estado||'').includes('Sin')?'var(--green)':(d.reporte&&d.reporte.estado||'').includes('Lesion')?'var(--red)':'var(--amber)') + '">' + (d.reporte&&d.reporte.estado||'—') + '</td>' +
-    '<td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.reporte&&d.reporte.rpe||'—') + '</td>' +
-    '<td style="font-size:11px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (d.reporte&&d.reporte.nota||'—') + '</td></tr>'
-  ).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Sin sesiones</td></tr>';
+  // Store sesiones globally for seguimiento tab
+  window._sesiones = sesiones;
+  window._hoyDocs = hoyDocs;
+  if (document.getElementById('s-seguimiento').classList.contains('on')) renderSeguimiento();
 
   // Fichas
   const ftbody = document.getElementById('fichas-tbody');
@@ -793,6 +830,355 @@ async function cargarDashboard() {
     ? '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr>'
     : fichas.map(d => '<tr><td class="td-n">' + (d.nombre||'?') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.peso?d.peso+' kg':'—') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.altura?d.altura+' cm':'—') + '</td><td>' + (d.imc||'—') + '</td><td>' + (d.obraSocial||'—') + '</td><td>' + (d.objetivo||'—') + '</td><td>' + (d.declaracionJurada?'<span class="badge bg">✓</span>':'<span class="badge br">Pend</span>') + '</td><td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.fecha||'—') + '</td></tr>').join('');
 }
+
+
+// ── STORAGE PARA SEGUIMIENTO ──────────────────────────────────────────────────
+function getAlumnoData(nombre) { return lsGet('seg:'+nombre) || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]}; }
+function saveAlumnoData(nombre, data) { lsSet('seg:'+nombre, data); }
+function getWaNum(nombre) { const d = getAlumnoData(nombre); return d.waNum || ''; }
+
+// ── SEGUIMIENTO VARIABLES ─────────────────────────────────────────────────────
+let segFilter = 'todos';
+let editingAlumno = null;
+
+function setSegFilter(f, btn) {
+  segFilter = f;
+  document.querySelectorAll('.seg-filter').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderSeguimiento();
+}
+
+function toggleSegCard(nombre) {
+  const body = document.getElementById('seg-body-'+nombre.replace(/\s+/g,'-'));
+  if (body) body.classList.toggle('open');
+}
+
+// ── RENDER SEGUIMIENTO ────────────────────────────────────────────────────────
+async function renderSeguimiento() {
+  const students = await getStudents();
+  const sesiones = window._sesiones || [];
+  const q = (document.getElementById('seg-search')?.value||'').toLowerCase();
+  const hoy = new Date().toLocaleDateString('es-AR');
+  const mesActual = new Date().toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  
+  // Build stats per student
+  const byStudent = {};
+  sesiones.forEach(d => {
+    const n = d.nombre||'';
+    if (!n) return;
+    if (!byStudent[n]) byStudent[n] = {sesiones:[],lastFecha:'',lastEstado:''};
+    byStudent[n].sesiones.push(d);
+    if ((d.fecha||'') >= byStudent[n].lastFecha) {
+      byStudent[n].lastFecha = d.fecha||'';
+      byStudent[n].lastEstado = d.reporte?.estado||'';
+    }
+  });
+
+  const sorted = [...students].sort((a,b)=>a.localeCompare(b,'es'));
+  
+  const filtered = sorted.filter(s => {
+    if (q && !s.toLowerCase().includes(q)) return false;
+    const d = getAlumnoData(s);
+    if (segFilter === 'activos' && !(byStudent[s]?.sesiones?.length)) return false;
+    if (segFilter === 'sin' && byStudent[s]?.sesiones?.length) return false;
+    if (segFilter === 'metas' && !d.metas?.length) return false;
+    return true;
+  });
+
+  const lista = document.getElementById('seg-lista');
+  if (!lista) return;
+  lista.innerHTML = '';
+
+  filtered.forEach(nombre => {
+    const d = getAlumnoData(nombre);
+    const stats = byStudent[nombre] || {sesiones:[], lastFecha:'', lastEstado:''};
+    const sesMes = stats.sesiones.filter(s => {
+      const f = s.fecha||'';
+      const now = new Date();
+      return f.includes(now.getFullYear()) && f.includes(now.toLocaleString('es-AR',{month:'long'}));
+    }).length;
+    const esperadas = (d.faseSesiones||3) * 4;
+    const faltas = Math.max(0, esperadas - sesMes);
+    const metas = d.metas || [];
+    const idSlug = nombre.replace(/\s+/g,'-');
+
+    // Header tags
+    let metaTags = metas.slice(0,2).map(m => {
+      const hasDate = m.fecha && m.fecha !== '';
+      const color = hasDate ? '' : 'verde';
+      const label = m.texto + (hasDate ? ' · ' + m.fecha : '');
+      return '<span class="seg-meta-tag ' + color + '">🎯 ' + label + '</span>';
+    }).join(' ');
+
+    // Status color
+    const lastEstColor = stats.lastEstado.includes('Sin') ? 'var(--green)' : stats.lastEstado.includes('Lesion') ? 'var(--red)' : 'var(--amber)';
+
+    const card = document.createElement('div');
+    card.className = 'seg-card';
+    card.innerHTML = 
+      '<div class="seg-card-header" onclick="toggleSegCard(\''+nombre+'\')">'+
+        '<div style="display:flex;align-items:center;gap:12px;flex:1;flex-wrap:wrap">'+
+          '<span class="seg-nombre">'+nombre+'</span>'+
+          metaTags+
+          (d.fase ? '<span style="font-size:11px;color:var(--cel);background:var(--cel-dim);padding:2px 8px;border-radius:99px">'+d.fase+'</span>' : '')+
+        '</div>'+
+        '<div style="display:flex;gap:10px;align-items:center;flex-shrink:0">'+
+          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--green);line-height:1">'+sesMes+'</div><div style="font-size:9px;color:var(--muted)">SESIONES</div></div>'+
+          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:'+(faltas>2?'var(--red)':'var(--amber)')+';line-height:1">'+faltas+'</div><div style="font-size:9px;color:var(--muted)">FALTAS</div></div>'+
+          '<span style="font-size:18px">›</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="seg-body" id="seg-body-'+idSlug+'">'+
+        
+        '<!-- METAS -->'+
+        '<div class="seg-section">'+
+          '<div class="seg-section-title">🎯 Metas</div>'+
+          '<div id="seg-metas-'+idSlug+'">'+
+          (metas.length ? metas.map((m,i) =>
+            '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'+
+              '<span style="font-size:13px;color:var(--white);flex:1">'+m.texto+'</span>'+
+              (m.fecha ? '<span style="font-size:11px;color:var(--amber);font-family:JetBrains Mono,monospace">📅 '+m.fecha+'</span>' : '<span style="font-size:10px;color:var(--muted)">Sin fecha</span>')+
+            '</div>'
+          ).join('') : '<div style="color:var(--muted);font-size:12px;padding:6px 0">Sin metas definidas</div>')+
+          '</div>'+
+        '</div>'+
+
+        '<!-- FASE -->'+
+        '<div class="seg-section">'+
+          '<div class="seg-section-title">📋 Fase de entrenamiento</div>'+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+            (d.fase ? '<span style="font-size:13px;color:var(--white)">'+d.fase+'</span>' : '<span style="color:var(--muted);font-size:12px">Sin fase definida</span>')+
+            (d.faseInicio ? '<span style="font-size:11px;color:var(--muted)">desde '+d.faseInicio+'</span>' : '')+
+            (d.faseSig ? '<span style="font-size:11px;color:var(--cel);background:var(--cel-dim);padding:2px 8px;border-radius:99px">próx: '+d.faseSig+'</span>' : '')+
+          '</div>'+
+        '</div>'+
+
+        '<!-- ESTADÍSTICAS DEL MES -->'+
+        '<div class="seg-section">'+
+          '<div class="seg-section-title">📊 Este mes</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:var(--green)">'+sesMes+'</div><div class="seg-stat-lbl">Sesiones</div></div></div>'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:'+(faltas>2?'var(--red)':'var(--amber)')+'">'+faltas+'</div><div class="seg-stat-lbl">Faltas est.</div></div></div>'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="font-size:16px;margin-top:4px;color:'+lastEstColor+'">'+( stats.lastEstado||'—')+'</div><div class="seg-stat-lbl">Último estado</div></div></div>'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="font-size:14px;margin-top:4px">'+( stats.lastFecha||'—')+'</div><div class="seg-stat-lbl">Última sesión</div></div></div>'+
+          '</div>'+
+        '</div>'+
+
+        '<!-- ÚLTIMAS SESIONES -->'+
+        (stats.sesiones.length ?
+          '<div class="seg-section">'+
+            '<div class="seg-section-title">Últimas sesiones</div>'+
+            stats.sesiones.slice(-5).reverse().map(s => {
+              const est = s.reporte?.estado||'—';
+              const estC = est.includes('Sin')?'var(--green)':est.includes('Lesion')?'var(--red)':'var(--amber)';
+              const regs = s.registros ? Object.entries(s.registros).slice(0,3).map(([k,v])=>v+' — '+k.replace(/^\d+\s*[-–]\s*/,'')).join(', ') : '—';
+              return '<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+                '<div style="display:flex;justify-content:space-between;align-items:center">'+
+                  '<span style="color:var(--cel)">'+(s.fecha||'?')+' · '+(s.dia||'?')+'</span>'+
+                  '<span style="color:'+estC+'">'+est+'</span>'+
+                '</div>'+
+                (regs !== '—' ? '<div style="color:var(--text2);margin-top:2px;font-size:11px">'+regs+'</div>' : '')+
+                (s.reporte?.nota ? '<div style="color:var(--muted);font-size:11px;margin-top:2px;font-style:italic">"'+s.reporte.nota+'"</div>' : '')+
+              '</div>';
+            }).join('')+
+          '</div>'
+        : '')+
+
+        '<!-- NOTAS -->'+
+        '<div class="seg-section">'+
+          '<div class="seg-section-title">📝 Notas del entrenador</div>'+
+          (d.notas?.length ? d.notas.slice().reverse().map(n => 
+            '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+              '<span style="color:var(--muted);font-size:10px">'+n.fecha+'</span> '+
+              '<span style="color:var(--text2)">'+n.texto+'</span></div>'
+          ).join('') : '<div style="color:var(--muted);font-size:12px;padding:4px 0">Sin notas</div>')+
+        '</div>'+
+
+        '<!-- ACCIONES -->'+
+        '<div class="seg-acciones">'+
+          '<button class="seg-btn" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(20,190,121,.3)" onclick="editarAlumno(\''+nombre+'\')">✏️ Editar perfil</button>'+
+          '<button class="seg-btn" style="background:var(--cel-dim);color:var(--cel);border:1px solid rgba(159,200,255,.2)" onclick="generarReporte(\''+nombre+'\')" >📄 Reporte mensual</button>'+
+          (getWaNum(nombre) ?
+            '<button class="seg-btn" style="background:rgba(37,211,102,.1);color:#25D366;border:1px solid rgba(37,211,102,.3)" onclick="abrirWa(\''+nombre+'\')">💬 WhatsApp</button>' :
+            '<button class="seg-btn" style="background:rgba(37,211,102,.1);color:#25D366;border:1px solid rgba(37,211,102,.3)" onclick="pedirWa(\''+nombre+'\')">💬 Agregar WA</button>')+
+        '</div>'+
+      '</div>';
+    lista.appendChild(card);
+  });
+
+  if (filtered.length === 0) {
+    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Sin resultados</div>';
+  }
+}
+
+// ── EDITAR ALUMNO ─────────────────────────────────────────────────────────────
+function editarAlumno(nombre) {
+  editingAlumno = nombre;
+  const d = getAlumnoData(nombre);
+  document.getElementById('edit-title').textContent = nombre.toUpperCase();
+  document.getElementById('edit-body').innerHTML =
+    '<div style="margin-bottom:14px">'+
+      '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">🎯 Metas</div>'+
+      '<div id="metas-list">'+
+      (d.metas||[]).map((m,i) =>
+        '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">'+
+          '<input type="text" value="'+m.texto+'" data-meta="texto" data-i="'+i+'" placeholder="Meta..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none">'+
+          '<input type="text" value="'+(m.fecha||'')+'" data-meta="fecha" data-i="'+i+'" placeholder="Fecha (ej: ene/2027)" style="width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--amber);font-family:Inter,sans-serif;outline:none">'+
+          '<button onclick="quitarMeta('+i+')" style="background:var(--red-bg);color:var(--red);border:none;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button>'+
+        '</div>'
+      ).join('')+
+      '</div>'+
+      '<button onclick="agregarMeta()" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(20,190,121,.3);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">+ Agregar meta</button>'+
+    '</div>'+
+    '<div style="margin-bottom:14px">'+
+      '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📋 Fase actual</div>'+
+      '<input type="text" id="edit-fase" value="'+(d.fase||'')+'" placeholder="Ej: PPG 3x10 RPE4" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px">'+
+        '<div style="flex:1"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Inicio</label><input type="text" id="edit-faseInicio" value="'+(d.faseInicio||'')+'" placeholder="ej: 01/07/2026" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none"></div>'+
+        '<div style="flex:1"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Próxima fase</label><input type="text" id="edit-faseSig" value="'+(d.faseSig||'')+'" placeholder="ej: PEG 4x8" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none"></div>'+
+        '<div style="width:80px"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Ses/semana</label><input type="number" id="edit-faseSes" value="'+(d.faseSesiones||3)+'" min="1" max="7" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;text-align:center"></div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="margin-bottom:14px">'+
+      '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">💬 WhatsApp</div>'+
+      '<input type="text" id="edit-wa" value="'+(d.waNum||'')+'" placeholder="5491112345678 (con código de país)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none">'+
+    '</div>'+
+    '<div>'+
+      '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📝 Agregar nota</div>'+
+      '<textarea id="edit-nota" placeholder="Escribí una observación sobre el alumno..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;resize:none;min-height:70px"></textarea>'+
+    '</div>';
+  document.getElementById('edit-modal-bg').style.display = 'flex';
+}
+
+function agregarMeta() {
+  const list = document.getElementById('metas-list');
+  const i = list.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:center';
+  div.innerHTML = '<input type="text" data-meta="texto" data-i="'+i+'" placeholder="Meta..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none">'+
+    '<input type="text" data-meta="fecha" data-i="'+i+'" placeholder="Fecha (ej: ene/2027)" style="width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--amber);font-family:Inter,sans-serif;outline:none">'+
+    '<button onclick="this.parentElement.remove()" style="background:var(--red-bg);color:var(--red);border:none;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✕</button>';
+  list.appendChild(div);
+}
+
+function quitarMeta(i) {
+  const list = document.getElementById('metas-list');
+  if (list.children[i]) list.children[i].remove();
+}
+
+function guardarEdit() {
+  const nombre = editingAlumno;
+  const d = getAlumnoData(nombre);
+  // Metas
+  const metaRows = document.querySelectorAll('#metas-list > div');
+  const metas = [];
+  metaRows.forEach(row => {
+    const texto = row.querySelector('[data-meta="texto"]')?.value?.trim() || '';
+    const fecha = row.querySelector('[data-meta="fecha"]')?.value?.trim() || '';
+    if (texto) metas.push({texto, fecha});
+  });
+  d.metas = metas;
+  d.fase = document.getElementById('edit-fase')?.value?.trim() || '';
+  d.faseInicio = document.getElementById('edit-faseInicio')?.value?.trim() || '';
+  d.faseSig = document.getElementById('edit-faseSig')?.value?.trim() || '';
+  d.faseSesiones = parseInt(document.getElementById('edit-faseSes')?.value||'3');
+  d.waNum = document.getElementById('edit-wa')?.value?.trim() || '';
+  // Nota nueva
+  const notaTexto = document.getElementById('edit-nota')?.value?.trim();
+  if (notaTexto) {
+    if (!d.notas) d.notas = [];
+    d.notas.push({fecha: new Date().toLocaleDateString('es-AR'), texto: notaTexto});
+  }
+  saveAlumnoData(nombre, d);
+  closeEdit();
+  renderSeguimiento();
+  showToast('✓ ' + nombre + ' actualizado');
+}
+
+function closeEdit() { document.getElementById('edit-modal-bg').style.display = 'none'; }
+
+// ── REPORTE MENSUAL ───────────────────────────────────────────────────────────
+function generarReporte(nombre) {
+  const d = getAlumnoData(nombre);
+  const sesiones = window._sesiones || [];
+  const stats = {};
+  sesiones.filter(s => s.nombre === nombre).forEach(s => {
+    if (!stats.primera || s.fecha < stats.primera) stats.primera = s.fecha;
+    if (!stats.ultima || s.fecha > stats.ultima) stats.ultima = s.fecha;
+    stats.total = (stats.total||0) + 1;
+    if (s.reporte?.nota) { if (!stats.notas) stats.notas = []; stats.notas.push(s.reporte.nota); }
+  });
+  const mes = new Date().toLocaleString('es-AR',{month:'long',year:'numeric'});
+  const esperadas = (d.faseSesiones||3) * 4;
+  const hechas = stats.total || 0;
+  const faltas = Math.max(0, esperadas - hechas);
+  
+  let reporte = '📋 REPORTE MENSUAL — ' + nombre.toUpperCase() + '\n';
+  reporte += '📅 ' + mes.charAt(0).toUpperCase() + mes.slice(1) + '\n\n';
+  
+  if (d.metas?.length) {
+    reporte += '🎯 METAS\n';
+    d.metas.forEach(m => { reporte += '  • ' + m.texto + (m.fecha ? ' ('+m.fecha+')' : '') + '\n'; });
+    reporte += '\n';
+  }
+  
+  if (d.fase) {
+    reporte += '📋 FASE ACTUAL: ' + d.fase + (d.faseInicio ? ' (desde '+d.faseInicio+')' : '') + '\n';
+    if (d.faseSig) reporte += '  → Próxima fase: ' + d.faseSig + '\n';
+    reporte += '\n';
+  }
+  
+  reporte += '📊 SESIONES DEL MES\n';
+  reporte += '  ✅ Realizadas: ' + hechas + ' / ' + esperadas + ' esperadas\n';
+  reporte += '  ❌ Faltas estimadas: ' + faltas + '\n';
+  if (stats.primera) reporte += '  Primera: ' + stats.primera + '\n';
+  if (stats.ultima) reporte += '  Última: ' + stats.ultima + '\n';
+  
+  if (d.notas?.length) {
+    reporte += '\n📝 OBSERVACIONES\n';
+    d.notas.slice(-3).forEach(n => { reporte += '  • ' + n.texto + '\n'; });
+  }
+  
+  reporte += '\n💪 ¡Seguimos trabajando hacia tus metas!';
+  
+  window._reporteActual = {nombre, texto: reporte};
+  document.getElementById('reporte-title').textContent = 'REPORTE — ' + nombre.toUpperCase();
+  document.getElementById('reporte-body').innerHTML = '<pre style="white-space:pre-wrap;font-family:Inter,sans-serif;font-size:13px;color:var(--text2);line-height:1.7">' + reporte + '</pre>';
+  document.getElementById('reporte-modal-bg').style.display = 'flex';
+}
+
+function closeReporte() { document.getElementById('reporte-modal-bg').style.display = 'none'; }
+
+function copiarReporte() {
+  if (window._reporteActual) {
+    navigator.clipboard?.writeText(window._reporteActual.texto).then(() => showToast('📋 Copiado'));
+  }
+}
+
+function compartirWhatsapp() {
+  if (!window._reporteActual) return;
+  const {nombre, texto} = window._reporteActual;
+  const d = getAlumnoData(nombre);
+  const num = d.waNum || '';
+  const url = 'https://wa.me/' + num + '?text=' + encodeURIComponent(texto);
+  window.open(url, '_blank');
+}
+
+function abrirWa(nombre) {
+  const d = getAlumnoData(nombre);
+  const msg = 'Hola ' + nombre + '! Te mando tu seguimiento del mes 💪';
+  window.open('https://wa.me/' + d.waNum + '?text=' + encodeURIComponent(msg), '_blank');
+}
+
+function pedirWa(nombre) {
+  const num = prompt('Número de WhatsApp de ' + nombre + ' (con código de país, sin +):');
+  if (!num) return;
+  const d = getAlumnoData(nombre);
+  d.waNum = num.replace(/\D/g,'');
+  saveAlumnoData(nombre, d);
+  renderSeguimiento();
+}
+
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
