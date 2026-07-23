@@ -200,9 +200,24 @@ tr:hover td{background:var(--cel-dim)}
 
   <!-- NÓMINA -->
   <div class="screen" id="s-nomina">
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="nomina-search" placeholder="Buscar alumno..." oninput="renderNomina()" style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;width:200px">
+      <span id="nomina-count" style="font-size:12px;color:var(--muted)"></span>
+    </div>
     <div class="tbl-wrap">
-      <table><thead><tr><th>Alumno</th><th>Sesiones</th><th>Último estado</th><th>Última sesión</th></tr></thead>
-      <tbody id="nomina-tbody"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr></tbody></table>
+      <table>
+        <thead><tr>
+          <th>Alumno</th>
+          <th>Plan</th>
+          <th>Sesiones mes</th>
+          <th>Restantes</th>
+          <th>% Asistencia</th>
+          <th>Total histórico</th>
+          <th>Último estado</th>
+          <th>Última sesión</th>
+        </tr></thead>
+        <tbody id="nomina-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr></tbody>
+      </table>
     </div>
   </div>
 
@@ -357,6 +372,22 @@ tr:hover td{background:var(--cel-dim)}
     <div class="slot-modal-foot">
       <button class="btn btn-ghost" onclick="closeSlotModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveSlot()" style="flex:1">Guardar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ONLINE MODAL -->
+<div id="online-modal-bg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:360px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--white);letter-spacing:1px">ALUMNOS ONLINE</div>
+      <button onclick="closeOnlineModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="overflow-y:auto;padding:14px 18px;flex:1" id="online-modal-body"></div>
+    <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="closeOnlineModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveOnline()" style="flex:1">Guardar</button>
     </div>
   </div>
 </div>
@@ -517,6 +548,64 @@ async function migrateFromLS() {
   }
 }
 
+// ── NÓMINA ────────────────────────────────────────────────────────────────────
+async function renderNomina() {
+  const tbody = document.getElementById('nomina-tbody');
+  const countEl = document.getElementById('nomina-count');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr>';
+
+  const students = await getStudents();
+  const sesiones = window._sesiones || [];
+  const q = (document.getElementById('nomina-search')?.value||'').toLowerCase();
+  const now = new Date();
+  const mesStr = now.toLocaleString('es-AR',{month:'long'}).toLowerCase();
+  const anioStr = String(now.getFullYear());
+
+  const byStudent = {};
+  sesiones.forEach(s => {
+    const n = s.nombre||'';
+    if (!n) return;
+    if (!byStudent[n]) byStudent[n] = {total:0, last:'—', estado:'—'};
+    byStudent[n].total++;
+    const f = (s.fecha||'').toLowerCase();
+    if ((s.fecha||'') >= byStudent[n].last) {
+      byStudent[n].last = s.fecha||'—';
+      byStudent[n].estado = s.reporte?.estado||'—';
+    }
+  });
+
+  const sorted = [...students].sort((a,b)=>a.localeCompare(b,'es'));
+  const filtered = q ? sorted.filter(s=>s.toLowerCase().includes(q)) : sorted;
+  if (countEl) countEl.textContent = filtered.length + ' alumnos';
+
+  const rows = await Promise.all(filtered.map(async nombre => {
+    const d = await getAlumnoData(nombre);
+    const st = byStudent[nombre] || {total:0, last:'—', estado:'—'};
+    const {hechas, restantes, pct} = await calcSesiones(nombre);
+    const planTipo = d.planTipo||'—';
+    const estC = st.estado.includes('Sin')?'var(--green)':st.estado.includes('Lesion')?'var(--red)':st.estado==='—'?'var(--muted)':'var(--amber)';
+    const sesC = hechas===0?'var(--muted)':restantes<=1?'var(--green)':'var(--amber)';
+    return '<tr class="nomina-row" data-n="'+nombre+'" style="cursor:pointer">' +
+      '<td class="td-n">'+nombre+'</td>' +
+      '<td><span style="font-size:11px;background:var(--bg3);color:var(--text2);padding:2px 8px;border-radius:99px">'+planTipo+'</span></td>' +
+      '<td>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<span style="font-family:JetBrains Mono,monospace;font-weight:600;color:'+sesC+'">'+hechas+'</span>' +
+          '<div style="flex:1;height:4px;background:var(--bg3);border-radius:99px;min-width:40px"><div style="height:100%;border-radius:99px;background:'+sesC+';width:'+pct+'%"></div></div>' +
+          '<span style="font-size:10px;color:var(--muted)">'+pct+'%</span>' +
+        '</div>' +
+      '</td>' +
+      '<td style="font-family:JetBrains Mono,monospace;font-weight:600;color:'+(restantes<=2?'var(--green)':restantes<=5?'var(--amber)':'var(--red)')+'">'+restantes+'</td>' +
+      '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--muted)">'+st.total+'</td>' +
+      '<td style="font-size:11px;color:'+estC+'">'+st.estado+'</td>' +
+      '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--muted)">'+st.last+'</td>' +
+    '</tr>';
+  }));
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Sin alumnos</td></tr>';
+}
+
+
 async function getStudents() {
   let extra = await fsRead('config','extra-students');
   // Fallback to localStorage if Firebase not available
@@ -595,8 +684,9 @@ function goScreen(id) {
   document.getElementById('pg-title').textContent = TITLES[id] || id.toUpperCase();
   if (id === 'profesor') renderProfScreen();
   if (id === 'tv') renderTvScreen();
-  if (id === 'calendario') { renderCalendario(); renderOnlineSection(); }
+  if (id === 'nomina') renderNomina();
   if (id === 'seguimiento') renderSegList();
+  if (id === 'calendario') { renderCalendario(); renderOnlineSection(); }
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
@@ -1322,6 +1412,7 @@ async function renderSegProfile(nombre) {
   const sesiones = window._sesiones || [];
   const misSesiones = sesiones.filter(s => s.nombre===nombre);
   const {hechas:sesMes, restantes, total:esperadas, pct} = await calcSesiones(nombre);
+  const plan = d.planTipo||'';
   const lastSes = misSesiones.slice(-1)[0];
   const lastEstado = lastSes?.reporte?.estado||'—';
   const lastEstC = lastEstado.includes('Sin')?'var(--green)':lastEstado.includes('Lesion')?'var(--red)':'var(--amber)';
@@ -1625,7 +1716,7 @@ function setSegFilter(f, btn) {
   segFilter = f;
   document.querySelectorAll('.seg-filter').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
-  renderSeguimiento();
+  renderSegList();
 }
 
 
@@ -1726,7 +1817,7 @@ function guardarEdit() {
   }
   saveAlumnoData(nombre, d);
   closeEdit();
-  renderSeguimiento();
+  renderSegList();
   showToast('✓ ' + nombre + ' actualizado');
 }
 
@@ -1811,7 +1902,7 @@ function pedirWa(nombre) {
   const d = getAlumnoData(nombre);
   d.waNum = num.replace(/\D/g,'');
   saveAlumnoData(nombre, d);
-  renderSeguimiento();
+  renderSegList();
 }
 
 
@@ -1884,6 +1975,16 @@ async function init() {
   setInterval(cargarDashboard, 30000);
   setInterval(syncConfig, 30000);
 }
+
+
+document.addEventListener('click', function(e) {
+  const row = e.target.closest('.nomina-row');
+  if (row && row.dataset.n) {
+    const nombre = row.dataset.n;
+    goScreen('seguimiento');
+    setTimeout(() => selectSegStudent(nombre), 400);
+  }
+});
 
 init().catch(e => console.error('Init error:', e));
 </script>
