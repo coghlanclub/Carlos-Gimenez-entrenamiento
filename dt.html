@@ -744,9 +744,13 @@ async function renderTvScreen() {
       dayData.map(ex => {
         const n = ex.name.replace(/^\d+\s*[-–]\s*/,'');
         const m = ex.series && ex.reps ? ex.series + '×' + ex.reps : ex.reps||ex.series||'';
+        const ref = ex.weeks ? ex.weeks.filter(w=>w&&w!=='-'&&w!=='—').slice(-1)[0]||'' : '';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:' + padding + ';border-bottom:1px solid rgba(255,255,255,.06);gap:12px">' +
           '<span style="font-size:' + exFontSize + 'px;color:rgba(240,246,255,.85);font-weight:500">' + n + '</span>' +
+          '<span style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0">' +
           (m ? '<span style="font-size:' + metaFontSize + 'px;font-weight:700;color:var(--green);white-space:nowrap;font-family:JetBrains Mono,monospace">' + m + '</span>' : '') +
+          (ref ? '<span style="font-size:' + Math.round(metaFontSize*0.85) + 'px;color:var(--amber);font-family:JetBrains Mono,monospace;white-space:nowrap">' + ref + '</span>' : '') +
+          '</span>' +
           '</div>';
       }).join('') + '</div>';
     content.appendChild(card);
@@ -995,7 +999,13 @@ async function cargarDashboard() {
 
 
 // ── STORAGE PARA SEGUIMIENTO ──────────────────────────────────────────────────
-async function getAlumnoData(nombre) { return (await fsRead('seguimiento', nombre)) || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]}; }
+async function getAlumnoData(nombre) {
+  let data = await fsRead('seguimiento', nombre);
+  if (!data) {
+    try { data = JSON.parse(localStorage.getItem('cg_seg:'+nombre)); } catch(e) {}
+  }
+  return data || {metas:[],fase:'',faseInicio:'',faseSesiones:3,notas:[]};
+}
 async function saveAlumnoData(nombre, data) { await fsWrite('seguimiento', nombre, data); }
 async function getWaNum(nombre) { const d = await getAlumnoData(nombre); return d.waNum || ''; }
 
@@ -1144,13 +1154,20 @@ async function renderSeguimiento() {
   filtered.forEach(nombre => {
     const d = getAlumnoData(nombre);
     const stats = byStudent[nombre] || {sesiones:[], lastFecha:'', lastEstado:''};
+    const now = new Date();
+    const mesStr = now.toLocaleString('es-AR',{month:'long'});
+    const anioStr = String(now.getFullYear());
     const sesMes = stats.sesiones.filter(s => {
-      const f = s.fecha||'';
-      const now = new Date();
-      return f.includes(now.getFullYear()) && f.includes(now.toLocaleString('es-AR',{month:'long'}));
+      const f = (s.fecha||'').toLowerCase();
+      return f.includes(anioStr) && f.includes(mesStr);
     }).length;
-    const esperadas = (d.faseSesiones||3) * 4;
-    const faltas = Math.max(0, esperadas - sesMes);
+    const sesPorSemana = (d.planTipo||'').includes('12') ? 3 : (d.planTipo||'').includes('8') ? 2 : (d.planTipo||'').includes('Híbrido') ? 1 : (d.faseSesiones||3);
+    const esperadas = sesPorSemana * 4;
+    const restantes = Math.max(0, esperadas - sesMes);
+    const faltas = restantes;
+    // Last session detail
+    const lastSes = stats.sesiones.slice(-1)[0];
+    const lastRegs = lastSes?.registros ? Object.entries(lastSes.registros).filter(([k,v])=>v&&v!=='').slice(0,4) : [];
     const metas = d.metas || [];
     const idSlug = nombre.replace(/\s+/g,'-');
 
@@ -1175,8 +1192,9 @@ async function renderSeguimiento() {
           (d.fase ? '<span style="font-size:11px;color:var(--cel);background:var(--cel-dim);padding:2px 8px;border-radius:99px">'+d.fase+'</span>' : '')+
         '</div>'+
         '<div style="display:flex;gap:10px;align-items:center;flex-shrink:0">'+
-          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--green);line-height:1">'+sesMes+'</div><div style="font-size:9px;color:var(--muted)">SESIONES</div></div>'+
-          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:'+(faltas>2?'var(--red)':'var(--amber)')+';line-height:1">'+faltas+'</div><div style="font-size:9px;color:var(--muted)">FALTAS</div></div>'+
+          (d.planTipo ? '<span style="font-size:10px;color:var(--muted);background:var(--bg3);padding:2px 7px;border-radius:99px;white-space:nowrap">'+d.planTipo+'</span>' : '')+
+          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:var(--green);line-height:1">'+sesMes+'/'+esperadas+'</div><div style="font-size:9px;color:var(--muted)">SESIONES</div></div>'+
+          '<div style="text-align:center"><div style="font-family:Bebas Neue,sans-serif;font-size:22px;color:'+(restantes>0?'var(--amber)':'var(--green)')+';line-height:1">'+restantes+'</div><div style="font-size:9px;color:var(--muted)">RESTANTES</div></div>'+
           '<span style="font-size:18px">›</span>'+
         '</div>'+
       '</div>'+
@@ -1208,12 +1226,17 @@ async function renderSeguimiento() {
         '<!-- ESTADÍSTICAS DEL MES -->'+
         '<div class="seg-section">'+
           '<div class="seg-section-title">📊 Este mes</div>'+
-          '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
-            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:var(--green)">'+sesMes+'</div><div class="seg-stat-lbl">Sesiones</div></div></div>'+
-            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:'+(faltas>2?'var(--red)':'var(--amber)')+'">'+faltas+'</div><div class="seg-stat-lbl">Faltas est.</div></div></div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:var(--green)">'+sesMes+'</div><div class="seg-stat-lbl">Hechas</div></div></div>'+
+            '<div class="seg-stat"><div><div class="seg-stat-val">'+esperadas+'</div><div class="seg-stat-lbl">Esperadas</div></div></div>'+
+            '<div class="seg-stat"><div><div class="seg-stat-val" style="color:'+(restantes>0?'var(--amber)':'var(--green)')+'">'+restantes+'</div><div class="seg-stat-lbl">Restantes</div></div></div>'+
             '<div class="seg-stat"><div><div class="seg-stat-val" style="font-size:16px;margin-top:4px;color:'+lastEstColor+'">'+( stats.lastEstado||'—')+'</div><div class="seg-stat-lbl">Último estado</div></div></div>'+
-            '<div class="seg-stat"><div><div class="seg-stat-val" style="font-size:14px;margin-top:4px">'+( stats.lastFecha||'—')+'</div><div class="seg-stat-lbl">Última sesión</div></div></div>'+
           '</div>'+
+          (lastSes ? '<div style="background:var(--bg3);border-radius:10px;padding:10px 12px">'+
+            '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Última clase — '+(lastSes.fecha||'?')+' · '+(lastSes.dia||'?')+'</div>'+
+            (lastRegs.length ? lastRegs.map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px"><span style="color:var(--text2)">'+k.replace(/^\d+\s*[-–]\s*/,'')+'</span><span style="color:var(--amber);font-family:JetBrains Mono,monospace;font-weight:600">'+v+'</span></div>').join('') : '<div style="font-size:12px;color:var(--muted)">Sin cargas registradas</div>')+
+            (lastSes.reporte?.nota ? '<div style="font-size:11px;color:var(--muted);margin-top:6px;font-style:italic">"'+lastSes.reporte.nota+'"</div>' : '')+
+          '</div>' : '')+
         '</div>'+
 
         '<!-- ÚLTIMAS SESIONES -->'+
@@ -1318,6 +1341,17 @@ function quitarMeta(i) {
   if (list.children[i]) list.children[i].remove();
 }
 
+function selPlanTipo(tipo, btn) {
+  document.querySelectorAll('#edit-body .seg-btn').forEach(b => {
+    if (['12 clases/mes','8 clases/mes','Híbrido 1x/sem','Online'].some(t => b.textContent === t)) {
+      b.style.cssText = 'background:var(--bg3);color:var(--text2);border:1px solid var(--border)';
+    }
+  });
+  btn.style.cssText = 'background:var(--green);color:var(--bg);border-color:var(--green)';
+  btn.dataset.selected = 'true';
+  window._editPlanTipo = tipo;
+}
+
 function guardarEdit() {
   const nombre = editingAlumno;
   const d = getAlumnoData(nombre);
@@ -1330,6 +1364,7 @@ function guardarEdit() {
     if (texto) metas.push({texto, fecha});
   });
   d.metas = metas;
+  d.planTipo = window._editPlanTipo || d.planTipo || '';
   d.fase = document.getElementById('edit-fase')?.value?.trim() || '';
   d.faseInicio = document.getElementById('edit-faseInicio')?.value?.trim() || '';
   d.faseSig = document.getElementById('edit-faseSig')?.value?.trim() || '';
