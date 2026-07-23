@@ -1439,7 +1439,7 @@ async function renderSegProfile(nombre) {
         '<div style="display:flex;gap:6px;flex-shrink:0">' +
           '<button onclick="editarAlumno(\''+nombre+'\')"  class="seg-btn" style="background:var(--bg3)">✏️ Editar</button>' +
           '<button onclick="generarReporte(\''+nombre+'\')"  class="seg-btn" style="background:var(--green-bg);color:var(--green);border-color:rgba(20,190,121,.3)">📄 Reporte</button>' +
-          (d.waNum ? '<button onclick="abrirWa(\''+nombre+'\')"  class="seg-btn" style="background:rgba(37,211,102,.1);color:#25D366;border-color:rgba(37,211,102,.3)">💬</button>' : '') +
+          (d.waNum ? '<button class="seg-btn wa-btn" data-n="'+nombre+'" style="background:rgba(37,211,102,.1);color:#25D366;border-color:rgba(37,211,102,.3)">💬</button>' : '') +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1626,7 +1626,7 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
         '<div class="seg-section-title">📝 Notas del entrenador</div>' +
         '<div style="display:flex;gap:8px;margin-bottom:14px">' +
           '<input type="text" id="nota-nueva-input" placeholder="Escribí una nota sobre '+nombre+'..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none">' +
-          '<button onclick="agregarNota(\''+nombre+'\')" class="btn btn-primary">+ Agregar</button>' +
+          '<button class="btn btn-primary add-nota-btn" data-n="'+nombre+'">+ Agregar</button>' +
         '</div>' +
         (d.notas?.length ?
           d.notas.slice().reverse().map((n,i)=>
@@ -1635,7 +1635,7 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
                 '<div style="font-size:10px;color:var(--muted);margin-bottom:4px">'+n.fecha+'</div>' +
                 '<div style="font-size:13px;color:var(--text2)">'+n.texto+'</div>' +
               '</div>' +
-              '<button onclick="eliminarNota(\''+nombre+'\','+( d.notas.length-1-i)+')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;flex-shrink:0">×</button>' +
+              '<button class="del-nota-btn" data-n="'+nombre+'" data-idx="'+(d.notas.length-1-i)+'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;flex-shrink:0">×</button>' +
             '</div>'
           ).join('') : '<div style="color:var(--muted);font-size:12px">Sin notas. Empezá a registrar observaciones.</div>') +
       '</div>';
@@ -1666,13 +1666,7 @@ async function eliminarNota(nombre, idx) {
   showToast('Nota eliminada');
 }
 // Event delegation for delete note buttons
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('del-nota-btn')) {
-    const alumno = e.target.dataset.alumno;
-    const idx = parseInt(e.target.dataset.idx);
-    if (alumno !== undefined && !isNaN(idx)) eliminarNota(alumno, idx);
-  }
-});
+
 
 // ── AGREGAR ALUMNO ────────────────────────────────────────────────────────────
 let _newTipo = 'box';
@@ -1977,12 +1971,26 @@ async function init() {
 }
 
 
+
+// Event delegation for dynamic seg buttons
 document.addEventListener('click', function(e) {
+  // WhatsApp
+  if (e.target.classList.contains('wa-btn')) {
+    abrirWa(e.target.dataset.n);
+  }
+  // Add nota
+  if (e.target.classList.contains('add-nota-btn')) {
+    agregarNota(e.target.dataset.n);
+  }
+  // Delete nota
+  if (e.target.classList.contains('del-nota-btn')) {
+    eliminarNota(e.target.dataset.n, parseInt(e.target.dataset.idx));
+  }
+  // Nomina row
   const row = e.target.closest('.nomina-row');
   if (row && row.dataset.n) {
-    const nombre = row.dataset.n;
     goScreen('seguimiento');
-    setTimeout(() => selectSegStudent(nombre), 400);
+    setTimeout(() => selectSegStudent(row.dataset.n), 400);
   }
 });
 
