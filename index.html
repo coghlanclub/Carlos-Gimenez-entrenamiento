@@ -76,6 +76,18 @@ window._fbUltimoPesos = async (nombre) => {
     return ultimos;
   } catch(e) { console.warn('Firebase read error:', e); return {}; }
 };
+
+// Obtener rutina desde Firebase (override del DT)
+window._fbGetRutina = async (nombre) => {
+  const mes = typeof SEED_MONTH !== 'undefined' ? SEED_MONTH : new Date().toLocaleString('es-AR',{month:'long',year:'numeric'});
+  try {
+    const r = await fetch(_FB_BASE + '/rutinas/' + encodeURIComponent(nombre + '_' + mes) + '?key=' + _FB_KEY);
+    if (!r.ok) return null;
+    const doc = await r.json();
+    const raw = doc.fields?.data?.stringValue;
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+};
 </script>
 
 <style>
@@ -436,8 +448,12 @@ async function entrar(nombre) {
   const fichaEl = document.getElementById('f-nombre');
   if(fichaEl && !fichaEl.value) fichaEl.value = nombre;
   
-  // Build day tabs and content
-  const studentData = SEED_DATA.students[nombre] || {};
+  // Build day tabs and content — check Firebase first for DT overrides
+  let studentData = SEED_DATA.students[nombre] || {};
+  if (window._fbGetRutina) {
+    const fbData = await window._fbGetRutina(nombre);
+    if (fbData && Object.keys(fbData).length > 0) studentData = fbData;
+  }
   const dias = Object.keys(studentData);
   
   const tabsWrap = document.getElementById('dia-tabs-wrap');
@@ -514,7 +530,11 @@ function mostrarNota() {
 
 async function guardarSesion() {
   if(!alumnoActual) return;
-  const studentData = SEED_DATA.students[alumnoActual] || {};
+  let studentData = SEED_DATA.students[alumnoActual] || {};
+  if (window._fbGetRutina) {
+    const fbData = await window._fbGetRutina(alumnoActual);
+    if (fbData && Object.keys(fbData).length > 0) studentData = fbData;
+  }
   const dias = Object.keys(studentData);
   const diaLabel = dias[diaActual] || 'Día 1';
   const fecha = new Date().toLocaleDateString('es-AR');
