@@ -37,44 +37,18 @@ window._fbGuardar = async (col, datos) => {
   } catch(e) { console.warn('Firebase write error:', e); return false; }
 };
 
-// Obtener últimos pesos del alumno
+// Obtener últimos pesos del alumno — usa el mismo GET confiable
 window._fbUltimoPesos = async (nombre) => {
-  try {
-    // Query sesiones del alumno ordenadas por timestamp desc
-    const url = _FB_BASE + ':runQuery?key=' + _FB_KEY;
-    const body = {
-      structuredQuery: {
-        from: [{collectionId: 'sesiones'}],
-        where: {
-          fieldFilter: {
-            field: {fieldPath: 'nombre'},
-            op: 'EQUAL',
-            value: {stringValue: nombre}
-          }
-        },
-        orderBy: [{field: {fieldPath: 'timestamp'}, direction: 'DESCENDING'}],
-        limit: 20
-      }
-    };
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body)
+  const sesiones = await window._fbGetTodasSesiones(nombre);
+  const ultimos = {};
+  sesiones.forEach(s => {
+    const regs = s.registros || {};
+    Object.entries(regs).forEach(([ej, peso]) => {
+      if (!ultimos[ej] && peso && peso !== '') ultimos[ej] = String(peso);
     });
-    if (!r.ok) return {};
-    const docs = await r.json();
-    const ultimos = {};
-    docs.forEach(item => {
-      if (!item.document) return;
-      const fields = item.document.fields || {};
-      const registros = fields.registros?.mapValue?.fields || {};
-      Object.entries(registros).forEach(([ej, val]) => {
-        const peso = val.stringValue || val.doubleValue || val.integerValue || '';
-        if (!ultimos[ej] && peso && peso !== '') ultimos[ej] = String(peso);
-      });
-    });
-    return ultimos;
-  } catch(e) { console.warn('Firebase read error:', e); return {}; }
+  });
+  console.log('[Pesos] Ejercicios con peso histórico:', Object.keys(ultimos));
+  return ultimos;
 };
 
 // Obtener rutina desde Firebase (override del DT)
@@ -89,37 +63,59 @@ window._fbGetRutina = async (nombre) => {
   } catch(e) { return null; }
 };
 
-// Obtener todas las sesiones del alumno ordenadas por fecha desc
+// Obtener todas las sesiones del alumno — simple GET + filtro cliente
 window._fbGetTodasSesiones = async (nombre) => {
   try {
-    const url = _FB_BASE + ':runQuery?key=' + _FB_KEY;
-    const body = {
-      structuredQuery: {
-        from: [{collectionId: 'sesiones'}],
-        where: {fieldFilter: {field:{fieldPath:'nombre'}, op:'EQUAL', value:{stringValue:nombre}}},
-        orderBy: [{field:{fieldPath:'timestamp'}, direction:'DESCENDING'}],
-        limit: 20
-      }
-    };
-    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    if(!r.ok) return [];
-    const docs = await r.json();
-    return docs.filter(d=>d.document).map(d => {
-      const fields = d.document.fields || {};
-      const obj = {};
-      Object.entries(fields).forEach(([k,v]) => {
-        if(v.stringValue !== undefined) obj[k] = v.stringValue;
-        else if(v.timestampValue) obj[k] = v.timestampValue;
-        else if(v.mapValue?.fields) {
-          const sub = {};
-          Object.entries(v.mapValue.fields).forEach(([sk,sv]) => sub[sk] = sv.stringValue||sv.doubleValue||'');
-          obj[k] = sub;
-        }
-      });
-      return obj;
-    });
-  } catch(e) { return []; }
+    const r = await fetch(_FB_BASE + '/sesiones?pageSize=200&key=' + _FB_KEY);
+    if(!r.ok) { console.warn('[Pesos] Error Firebase:', r.status); return []; }
+    const data = await r.json();
+    const docs = data.documents || [];
+    console.log('[Pesos] Total docs en Firebase:', docs.length);
+    console.log('[Firebase] Total documentos en colección sesiones:', docs.length);
+    if(docs.length > 0) {
+      // Show all unique nombres in Firebase
+      const names = [...new Set(docs.map(d => {
+        const f = d.fields || {};
+        return f.nombre?.stringValue || '(sin nombre)';
+      }))];
+      console.log('[Firebase] Nombres en Firebase:', names.join(', '));
+    }
+    const result = docs
+      .map(doc => {
+        const fields = doc.fields || {};
+        const obj = {id: doc.name.split('/').pop()};
+        Object.entries(fields).forEach(([k,v]) => {
+          if(v.stringValue !== undefined) obj[k] = v.stringValue;
+          else if(v.integerValue !== undefined) obj[k] = v.integerValue;
+          else if(v.doubleValue !== undefined) obj[k] = v.doubleValue;
+          else if(v.timestampValue) obj[k] = v.timestampValue;
+          else if(v.mapValue?.fields) {
+            const sub = {};
+            Object.entries(v.mapValue.fields).forEach(([sk,sv]) => {
+              sub[sk] = sv.stringValue !== undefined ? sv.stringValue :
+                        sv.integerValue !== undefined ? sv.integerValue :
+                        sv.doubleValue !== undefined ? sv.doubleValue : '';
+            });
+            obj[k] = sub;
+          }
+        });
+        return obj;
+      })
+      .filter(s => s.nombre && nombre && s.nombre.trim().toLowerCase() === nombre.trim().toLowerCase())
+      .sort((a,b) => (b.timestamp||'') > (a.timestamp||'') ? 1 : -1);
+    console.log('[Pesos] Sesiones de "' + nombre + '":', result.length);
+    if(result.length > 0) {
+      console.log('[Pesos] Última sesión:', result[0].fecha, '| registros:', JSON.stringify(result[0].registros || {}));
+    }
+    return result;
+  } catch(e) {
+    console.warn('[Pesos] Error:', e.message);
+    return [];
+  }
 };
+
+// Also expose for abrirHistEj
+window._getSesionesAlumno = window._fbGetTodasSesiones;
 
 // Actualizar visualmente todos los refs de ejercicios con pesos históricos
 function actualizarPesosRefs() {
@@ -128,8 +124,21 @@ function actualizarPesosRefs() {
     const refDiv = row.querySelector('.ej-ref');
     if(!inp || !refDiv) return;
     const ejName = inp.dataset.ej;
-    const ant = window._ultimosPesos?.[ejName];
-    const penult = window._penultimoPesos?.[ejName];
+    // Try exact match first, then partial match (ignore block prefix)
+    const cleanName = ejName.replace(/^\d+\s*[-–]\s*/, '').toLowerCase();
+    let ant = window._ultimosPesos?.[ejName];
+    let penult = window._penultimoPesos?.[ejName];
+    // Fallback: try to find by partial name match
+    if(!ant && window._ultimosPesos) {
+      const match = Object.entries(window._ultimosPesos).find(([k]) => 
+        k.replace(/^\d+\s*[-–]\s*/, '').toLowerCase() === cleanName
+      );
+      if(match) { ant = match[1]; }
+      const match2 = Object.entries(window._penultimoPesos||{}).find(([k]) => 
+        k.replace(/^\d+\s*[-–]\s*/, '').toLowerCase() === cleanName
+      );
+      if(match2) penult = match2[1];
+    }
 
     // Keep the plan reference badge (📊)
     const refBadge = refDiv.querySelector('.ej-peso-ref');
@@ -582,6 +591,19 @@ async function entrar(nombre) {
     return `<div id="dia-${i}" class="dia-content ${i===0?'on':''}">${html || '<div style="padding:20px;color:var(--muted);font-size:13px">Sin ejercicios para este día</div>'}</div>`;
   }).join('');
   
+  // Add status element
+  const existingStatus = document.getElementById('pesos-status');
+  if(!existingStatus) {
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'pesos-status';
+    statusDiv.style.cssText = 'padding:8px 20px;font-size:11px;color:#7A8FA8;text-align:center;background:rgba(159,200,255,.05);border-bottom:1px solid rgba(159,200,255,.08)';
+    statusDiv.textContent = '⏳ Cargando pesos anteriores...';
+    const screen = document.getElementById('s-entreno');
+    if(screen) screen.insertBefore(statusDiv, screen.firstChild);
+  } else {
+    existingStatus.textContent = '⏳ Cargando pesos anteriores...';
+    existingStatus.style.color = '#7A8FA8';
+  }
   showScreen('s-entreno');
   
   // Load ALL historical weights from Firebase (all days)
@@ -589,21 +611,52 @@ async function entrar(nombre) {
   window._penultimoPesos = {};
   try {
     const sesiones = await window._fbGetTodasSesiones(nombre);
-    sesiones.forEach((s, idx) => {
+    // Get last weight per exercise from ALL sessions (newest first)
+    sesiones.forEach((s, sesIdx) => {
       if(!s.registros) return;
       Object.entries(s.registros).forEach(([ejName, peso]) => {
-        if(idx === 0 && !window._ultimosPesos[ejName]) window._ultimosPesos[ejName] = peso;
-        if(idx === 1 && !window._penultimoPesos[ejName]) window._penultimoPesos[ejName] = peso;
+        if(!peso || peso === '—' || peso === '') return;
+        // Last used (first session that has this exercise)
+        if(!window._ultimosPesos[ejName]) window._ultimosPesos[ejName] = peso;
+        // Second to last (second session that has this exercise)
+        else if(!window._penultimoPesos[ejName]) window._penultimoPesos[ejName] = peso;
       });
     });
-    // Pre-fill inputs with last used weight as placeholder
+    const cantPesos = Object.keys(window._ultimosPesos).length;
+    console.log('[Pesos] ══ DIAGNÓSTICO FIREBASE ══');
+    console.log('[Pesos] Buscando para alumno:', nombre);
+    console.log('[Pesos] Sesiones encontradas para este alumno:', sesiones.length);
+    console.log('[Pesos] Ejercicios con peso histórico:', cantPesos);
+    if(cantPesos > 0) console.log('[Pesos] Pesos:', JSON.stringify(window._ultimosPesos));
+    // Pre-fill ALL inputs across ALL days with last used weight
     document.querySelectorAll('.ej-input').forEach(inp => {
       const ej = inp.dataset.ej;
-      if(ej && window._ultimosPesos[ej]) {
-        inp.placeholder = window._ultimosPesos[ej];
+      if(!ej) return;
+      const cleanEj = ej.replace(/^\d+\s*[-–]\s*/, '').toLowerCase();
+      // Exact match
+      let lastPeso = window._ultimosPesos[ej];
+      // Partial match fallback
+      if(!lastPeso) {
+        const found = Object.entries(window._ultimosPesos).find(([k]) =>
+          k.replace(/^\d+\s*[-–]\s*/, '').toLowerCase() === cleanEj
+        );
+        if(found) lastPeso = found[1];
       }
+      if(lastPeso) inp.placeholder = lastPeso;
     });
-  } catch(e) { console.warn('No se pudieron cargar pesos históricos', e); }
+    // Show status
+    const statusEl = document.getElementById('pesos-status');
+    if(statusEl) {
+      statusEl.textContent = cantPesos > 0 
+        ? '💪 ' + cantPesos + ' ejercicios con historial cargados (' + sesiones.length + ' sesiones)'
+        : '📊 Sin sesiones registradas aún — tus pesos se guardarán desde hoy';
+      statusEl.style.color = cantPesos > 0 ? '#14BE79' : '#7A8FA8';
+    }
+  } catch(e) { 
+    console.warn('[Pesos] Error cargando histórico:', e);
+    const statusEl = document.getElementById('pesos-status');
+    if(statusEl) statusEl.textContent = '⚠️ No se pudieron cargar los pesos anteriores';
+  }
   actualizarPesosRefs();
 }
 
@@ -937,6 +990,32 @@ document.addEventListener('click', function(e) {
     startY = 0;
   });
 })();
+
+
+// ── TEST FIREBASE DESDE PORTAL ────────────────────────────────────────────────
+async function testFirebase() {
+  const msg = document.getElementById('fb-test-msg');
+  msg.textContent = 'Firebase: conectando...';
+  try {
+    const url = 'https://firestore.googleapis.com/v1/projects/box-carlos-gimenez/databases/(default)/documents/sesiones?pageSize=5&key=AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo';
+    const r = await fetch(url);
+    if(!r.ok) {
+      msg.textContent = '❌ Error HTTP: ' + r.status;
+      msg.style.color = '#F5524A';
+      return;
+    }
+    const data = await r.json();
+    const docs = data.documents || [];
+    const nombres = docs.map(d => d.fields?.nombre?.stringValue || '?').join(', ');
+    msg.textContent = '✅ Firebase OK — ' + docs.length + ' docs | nombres: ' + (nombres || 'ninguno');
+    msg.style.color = '#14BE79';
+  } catch(e) {
+    msg.textContent = '❌ CORS/Error: ' + e.message;
+    msg.style.color = '#F5524A';
+  }
+}
+// Auto-test on load
+window.addEventListener('load', () => setTimeout(testFirebase, 1500));
 
 </script>
 
