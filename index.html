@@ -130,24 +130,35 @@ function actualizarPesosRefs() {
     const ejName = inp.dataset.ej;
     const ant = window._ultimosPesos?.[ejName];
     const penult = window._penultimoPesos?.[ejName];
-    // Keep existing reference badge
+
+    // Keep the plan reference badge (📊)
     const refBadge = refDiv.querySelector('.ej-peso-ref');
     refDiv.innerHTML = '';
-    if(refBadge) refDiv.appendChild(refBadge);
+
     if(ant) {
+      // Show ACTUAL last weight prominently first
       const trend = penult ? (parseFloat(ant)>parseFloat(penult)?'↑':parseFloat(ant)<parseFloat(penult)?'↓':'→') : '';
       const trendC = trend==='↑'?'#14BE79':trend==='↓'?'#F5524A':'#7A8FA8';
+
       const antEl = document.createElement('span');
       antEl.className = 'ej-peso-ant';
-      antEl.textContent = '💪 ' + ant;
+      antEl.style.cursor = 'pointer';
+      antEl.title = 'Toca para ver historial';
+      antEl.innerHTML = '💪 <strong>' + ant + '</strong>' + (trend ? ' <span style="color:'+trendC+';font-size:13px">'+trend+'</span>' : '');
       refDiv.appendChild(antEl);
-      if(trend) {
-        const tEl = document.createElement('span');
-        tEl.className = 'ej-trend';
-        tEl.style.color = trendC;
-        tEl.textContent = trend + (penult?' (ant: '+penult+')':'');
-        refDiv.appendChild(tEl);
+
+      if(penult) {
+        const prevEl = document.createElement('span');
+        prevEl.style.cssText = 'font-size:10px;color:rgba(159,200,255,.4);font-family:var(--mono)';
+        prevEl.textContent = 'ant: ' + penult;
+        refDiv.appendChild(prevEl);
       }
+    }
+
+    // Show plan reference after (smaller)
+    if(refBadge) {
+      refBadge.style.opacity = ant ? '0.6' : '1';
+      refDiv.appendChild(refBadge);
     }
   });
 }
@@ -256,6 +267,13 @@ select.ficha-input option{background:var(--bg2)}
 .btn-primary{flex:2;background:var(--green);color:var(--bg);border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer}
 .btn-ghost{flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--text2);border-radius:12px;padding:14px;font-size:14px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
 .btn-primary:active,.btn-ghost:active{opacity:.85;transform:scale(.98)}
+
+.hist-stat{background:#0A1628;padding:12px 8px;text-align:center}
+.hist-stat-val{font-family:var(--mono);font-size:18px;font-weight:700;color:#F0F6FF;line-height:1}
+.hist-stat-lbl{font-size:9px;color:rgba(159,200,255,.5);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.hist-sess-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid rgba(159,200,255,.06)}
+.hist-sess-row:last-child{border-bottom:none}
+
 </style>
 </head>
 <body>
@@ -551,7 +569,7 @@ async function entrar(nombre) {
             <div class="ej-nombre">${cleanName}</div>
             ${meta ? `<div class="ej-meta">${meta}</div>` : ''}
             <div class="ej-ref" id="ref-${ejId}">
-              ${ref ? `<span class="ej-peso-ref">📋 ${ref}</span>` : ''}
+              ${ref ? `<span class="ej-peso-ref" data-ej-name="${ej.name}" style="cursor:pointer">📊 ${ref}</span>` : ''}
             </div>
           </div>
           <div class="ej-input-wrap">
@@ -569,8 +587,7 @@ async function entrar(nombre) {
   // Load ALL historical weights from Firebase (all days)
   window._ultimosPesos = {};
   window._penultimoPesos = {};
-  if(window._fbUltimoPesos) {
-    // Get last 2 sessions to show trend
+  try {
     const sesiones = await window._fbGetTodasSesiones(nombre);
     sesiones.forEach((s, idx) => {
       if(!s.registros) return;
@@ -579,7 +596,14 @@ async function entrar(nombre) {
         if(idx === 1 && !window._penultimoPesos[ejName]) window._penultimoPesos[ejName] = peso;
       });
     });
-  }
+    // Pre-fill inputs with last used weight as placeholder
+    document.querySelectorAll('.ej-input').forEach(inp => {
+      const ej = inp.dataset.ej;
+      if(ej && window._ultimosPesos[ej]) {
+        inp.placeholder = window._ultimosPesos[ej];
+      }
+    });
+  } catch(e) { console.warn('No se pudieron cargar pesos históricos', e); }
   actualizarPesosRefs();
 }
 
@@ -769,6 +793,178 @@ function volver() {
 
 // ── INICIO ────────────────────────────────────────────────────────────────────
 renderAlumnos([]);
+
+// ── HISTORIAL POR EJERCICIO ───────────────────────────────────────────────────
+async function abrirHistEj(ejName, row) {
+  const modal = document.getElementById('hist-modal');
+  const panel = document.getElementById('hist-panel');
+  const nombre = alumnoActual;
+  if(!nombre || !ejName) return;
+
+  // Show modal with slide up animation
+  modal.style.display = 'flex';
+  requestAnimationFrame(() => {
+    panel.style.transform = 'translateY(0)';
+  });
+
+  // Close on backdrop click
+  modal.onclick = (e) => { if(e.target === modal) cerrarHistEj(); };
+
+  // Load data
+  document.getElementById('hist-ej-name').textContent = ejName.replace(/^\d+\s*[-–]\s*/, '');
+  document.getElementById('hist-stats').innerHTML = '<div class="hist-stat"><div class="hist-stat-val" style="color:#9FC8FF">—</div><div class="hist-stat-lbl">Cargando...</div></div>';
+  document.getElementById('hist-sessions').innerHTML = '';
+
+  const sesiones = await window._fbGetTodasSesiones(nombre);
+  
+  // Filter sessions that have this exercise
+  const entries = [];
+  sesiones.reverse().forEach(s => {
+    const regs = s.registros || {};
+    const peso = regs[ejName];
+    if(peso && peso !== '') {
+      entries.push({
+        fecha: s.fecha || '?',
+        dia: s.dia || '?',
+        peso: parseFloat(peso) || 0,
+        rawPeso: peso,
+        timestamp: s.timestamp || ''
+      });
+    }
+  });
+
+  if(!entries.length) {
+    document.getElementById('hist-stats').innerHTML = '<div class="hist-stat" style="grid-column:1/-1;padding:24px"><div class="hist-stat-lbl" style="font-size:13px;color:rgba(159,200,255,.4)">Sin registros aún para este ejercicio</div></div>';
+    return;
+  }
+
+  // Stats
+  const pesos = entries.map(e=>e.peso).filter(p=>p>0);
+  const pr = Math.max(...pesos);
+  const ultimo = entries[entries.length-1].peso;
+  const primero = entries[0].peso;
+  const cambio = ultimo - primero;
+  const promedio = (pesos.reduce((a,b)=>a+b,0)/pesos.length).toFixed(1);
+  const tendencia = cambio > 0 ? '↑' : cambio < 0 ? '↓' : '→';
+  const tendC = cambio > 0 ? '#14BE79' : cambio < 0 ? '#F5524A' : '#7A8FA8';
+
+  document.getElementById('hist-stats').innerHTML = [
+    {val: entries[entries.length-1].rawPeso, lbl: 'Último'},
+    {val: pr + 'kg', lbl: 'PR 🏆', c: '#F5A623'},
+    {val: tendencia + ' ' + Math.abs(cambio).toFixed(1) + 'kg', lbl: 'Progreso', c: tendC},
+    {val: promedio + 'kg', lbl: 'Promedio'},
+  ].map(s => `<div class="hist-stat"><div class="hist-stat-val" style="${s.c?'color:'+s.c:''}">${s.val}</div><div class="hist-stat-lbl">${s.lbl}</div></div>`).join('');
+
+  // Chart SVG
+  const pts = entries.slice(-12);
+  const minP = Math.min(...pts.map(e=>e.peso)) * 0.95;
+  const maxP = Math.max(...pts.map(e=>e.peso)) * 1.02;
+  const W = 320, H = 80, PAD = 8;
+  const toX = (i) => PAD + (i / Math.max(pts.length-1,1)) * (W - PAD*2);
+  const toY = (p) => H - PAD - ((p-minP)/(maxP-minP||1)) * (H-PAD*2);
+  
+  const pathD = pts.map((e,i) => (i===0?'M':'L') + toX(i).toFixed(1)+','+toY(e.peso).toFixed(1)).join(' ');
+  const areaD = pathD + ' L'+toX(pts.length-1).toFixed(1)+','+H+' L'+toX(0).toFixed(1)+','+H+' Z';
+  
+  const dots = pts.map((e,i) => {
+    const isLast = i === pts.length-1;
+    const isPR = e.peso === pr;
+    const c = isPR ? '#F5A623' : isLast ? '#14BE79' : 'rgba(159,200,255,.4)';
+    return `<circle cx="${toX(i).toFixed(1)}" cy="${toY(e.peso).toFixed(1)}" r="${isLast||isPR?5:3}" fill="${c}"/>
+      <text x="${toX(i).toFixed(1)}" y="${(toY(e.peso)-8).toFixed(1)}" text-anchor="middle" font-size="8" fill="${c}" font-family="monospace">${e.rawPeso}</text>`;
+  }).join('');
+
+  document.getElementById('hist-chart').innerHTML = 
+    `<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#14BE79" stop-opacity=".25"/><stop offset="100%" stop-color="#14BE79" stop-opacity="0"/></linearGradient></defs>
+    <path d="${areaD}" fill="url(#hg)"/>
+    <path d="${pathD}" fill="none" stroke="#14BE79" stroke-width="2" stroke-linejoin="round"/>
+    ${dots}`;
+
+  // Session list (newest first)
+  const rows = entries.slice().reverse().map((e, i, arr) => {
+    const prev = arr[i+1];
+    const t = prev ? (e.peso>prev.peso?'↑':e.peso<prev.peso?'↓':'→') : '';
+    const tc = t==='↑'?'#14BE79':t==='↓'?'#F5524A':'#7A8FA8';
+    const isPR = e.peso === pr;
+    return `<div class="hist-sess-row">
+      <div>
+        <div style="font-size:13px;color:#F0F6FF;font-weight:600">${e.fecha}</div>
+        <div style="font-size:11px;color:rgba(159,200,255,.5);margin-top:2px">${e.dia}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${isPR ? '<span style="font-size:10px;color:#F5A623;font-weight:700">🏆 PR</span>' : ''}
+        ${t ? `<span style="font-size:15px;font-weight:700;color:${tc}">${t}</span>` : ''}
+        <span style="font-family:var(--mono);font-size:18px;font-weight:700;color:${isPR?'#F5A623':'#F0F6FF'}">${e.rawPeso}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('hist-sessions').innerHTML = rows;
+}
+
+function cerrarHistEj() {
+  const panel = document.getElementById('hist-panel');
+  const modal = document.getElementById('hist-modal');
+  panel.style.transform = 'translateY(100%)';
+  setTimeout(() => { modal.style.display = 'none'; }, 350);
+}
+
+// Event delegation for exercise history
+document.addEventListener('click', function(e) {
+  const refBadge = e.target.closest('.ej-peso-ref[data-ej-name]');
+  const antBadge = e.target.closest('.ej-peso-ant');
+  if (refBadge) {
+    const ejName = refBadge.dataset.ejName;
+    const row = refBadge.closest('.ej-row');
+    if (ejName) abrirHistEj(ejName, row);
+  } else if (antBadge) {
+    const row = antBadge.closest('.ej-row');
+    const inp = row?.querySelector('.ej-input');
+    if (inp) abrirHistEj(inp.dataset.ej, row);
+  }
+});
+
+// Close with swipe down gesture
+(function() {
+  let startY = 0;
+  document.addEventListener('touchstart', e => {
+    if(e.target.closest('#hist-panel')) startY = e.touches[0].clientY;
+  });
+  document.addEventListener('touchend', e => {
+    if(!startY) return;
+    const dy = e.changedTouches[0].clientY - startY;
+    if(dy > 80) cerrarHistEj();
+    startY = 0;
+  });
+})();
+
 </script>
+
+<!-- MODAL HISTORIAL EJERCICIO -->
+<div id="hist-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center;padding:0">
+  <div id="hist-panel" style="background:#111f38;border-radius:24px 24px 0 0;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding:0 0 32px;transform:translateY(100%);transition:transform .35s cubic-bezier(.32,0,.67,0)">
+    <!-- Handle -->
+    <div style="display:flex;justify-content:center;padding:12px 0 4px">
+      <div style="width:40px;height:4px;background:rgba(159,200,255,.2);border-radius:99px"></div>
+    </div>
+    <!-- Header -->
+    <div style="padding:12px 20px 16px">
+      <div style="font-size:10px;font-weight:600;color:rgba(159,200,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Historial de carga</div>
+      <div id="hist-ej-name" style="font-size:22px;font-weight:700;color:#F0F6FF;line-height:1.2"></div>
+    </div>
+    <!-- Stats row -->
+    <div id="hist-stats" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1px;background:rgba(159,200,255,.08);margin-bottom:16px"></div>
+    <!-- Chart -->
+    <div style="padding:0 20px;margin-bottom:16px">
+      <svg id="hist-chart" width="100%" height="80" viewBox="0 0 320 80" preserveAspectRatio="none"></svg>
+    </div>
+    <!-- Session list -->
+    <div style="padding:0 20px">
+      <div style="font-size:10px;font-weight:600;color:rgba(159,200,255,.5);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Sesiones</div>
+      <div id="hist-sessions"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
