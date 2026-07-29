@@ -631,12 +631,12 @@ async function renderNomina() {
   const anioStr = String(now.getFullYear());
 
   const byStudent = {};
+  const _nomMesNum = String(now.getMonth() + 1).padStart(2, '0');
   sesiones.forEach(s => {
     const n = s.nombre||'';
     if (!n) return;
     if (!byStudent[n]) byStudent[n] = {total:0, last:'—', estado:'—'};
     byStudent[n].total++;
-    const f = (s.fecha||'').toLowerCase();
     if ((s.fecha||'') >= byStudent[n].last) {
       byStudent[n].last = s.fecha||'—';
       byStudent[n].estado = s.reporte?.estado||'—';
@@ -1348,10 +1348,14 @@ async function calcSesiones(nombre) {
   const sesiones = window._sesiones || [];
 
   // Sesiones hechas este mes
+  // fecha stored as "20/07/2026" — use numeric month not Spanish name
+  const mesNum = String(viewNow.getMonth() + 1).padStart(2, '0');
   const hechas = sesiones.filter(s => {
     if (!s.nombre || s.nombre.trim().toLowerCase() !== nombre.trim().toLowerCase()) return false;
-    const f = (s.fecha||'').toLowerCase();
-    return f.includes(añoStr) && f.includes(mesStr);
+    const f = s.fecha || '';
+    // Match dd/MM/yyyy or any format containing /MM/YYYY or MM/YYYY
+    return (f.includes('/' + mesNum + '/' + añoStr) || f.includes(mesNum + '/' + añoStr) || 
+            (f.toLowerCase().includes(mesStr) && f.includes(añoStr)));
   }).length;
 
   // Meta mensual = el plan del alumno (clases del 1 al último día del mes)
@@ -1443,8 +1447,9 @@ async function renderSegList() {
       byStudent[n].lastFecha = d.fecha||'';
       byStudent[n].lastEstado = d.reporte?.estado||'';
     }
-    const f = (d.fecha||'').toLowerCase();
-    if (f.includes(_añoStr) && f.includes(_mesStr)) byStudent[n].sesMes++;
+    const _fNum = String(_viewNow.getMonth()+1).padStart(2,'0');
+    const _f = d.fecha||'';
+    if (_f.includes('/'+_fNum+'/'+_añoStr) || (_f.toLowerCase().includes(_mesStr) && _f.includes(_añoStr))) byStudent[n].sesMes++;
   });
 
   const sorted = [...students].sort((a,b)=>a.localeCompare(b,'es'));
