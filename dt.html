@@ -455,6 +455,14 @@ function fsDocToObj(doc) {
   return obj;
 }
 
+// Verificar si fecha pertenece a mes (acepta "21/7/2026" y "21/07/2026")
+function _fechaEsMes(fecha, mes1based, anio) {
+  const f = fecha || '';
+  const a = String(anio);
+  const m = String(mes1based);
+  return f.includes('/' + m + '/' + a) || f.includes('/' + m.padStart(2,'0') + '/' + a);
+}
+
 async function fsGet(col) {
   try {
     const r = await fetch(FB_BASE + '/' + col + '?pageSize=200&key=' + FB_KEY);
@@ -1349,13 +1357,9 @@ async function calcSesiones(nombre) {
 
   // Sesiones hechas este mes
   // fecha stored as "20/07/2026" — use numeric month not Spanish name
-  const mesNum = String(viewNow.getMonth() + 1).padStart(2, '0');
   const hechas = sesiones.filter(s => {
     if (!s.nombre || s.nombre.trim().toLowerCase() !== nombre.trim().toLowerCase()) return false;
-    const f = s.fecha || '';
-    // Match dd/MM/yyyy or any format containing /MM/YYYY or MM/YYYY
-    return (f.includes('/' + mesNum + '/' + añoStr) || f.includes(mesNum + '/' + añoStr) || 
-            (f.toLowerCase().includes(mesStr) && f.includes(añoStr)));
+    return _fechaEsMes(s.fecha, viewNow.getMonth()+1, año);
   }).length;
 
   // Meta mensual = el plan del alumno (clases del 1 al último día del mes)
@@ -1447,9 +1451,7 @@ async function renderSegList() {
       byStudent[n].lastFecha = d.fecha||'';
       byStudent[n].lastEstado = d.reporte?.estado||'';
     }
-    const _fNum = String(_viewNow.getMonth()+1).padStart(2,'0');
-    const _f = d.fecha||'';
-    if (_f.includes('/'+_fNum+'/'+_añoStr) || (_f.toLowerCase().includes(_mesStr) && _f.includes(_añoStr))) byStudent[n].sesMes++;
+    if (_fechaEsMes(d.fecha, _viewNow.getMonth()+1, _viewNow.getFullYear())) byStudent[n].sesMes++;
   });
 
   const sorted = [...students].sort((a,b)=>a.localeCompare(b,'es'));
