@@ -1491,6 +1491,7 @@ async function renderSegProfile(nombre) {
   const d = await getAlumnoData(nombre);
   const sesiones = window._sesiones || [];
   const misSesiones = sesiones.filter(s => s.nombre===nombre);
+  const notaUrgente = d.notaUrgente || '';
   const {hechas:sesMes, restantes, metaMes:esperadas, pct} = await calcSesiones(nombre);
   const plan = d.planTipo||'';
   const lastSes = misSesiones.slice(-1)[0];
@@ -1545,6 +1546,50 @@ async function renderSegProfile(nombre) {
     '<div class="seg-content" id="seg-tab-content"></div>';
 
   await renderSegTab(nombre, segActiveTab, d, misSesiones);
+  // Inject urgente note section (DOM, avoids string escaping)
+  injectUrgenteSection(nombre, notaUrgente);
+}
+
+function injectUrgenteSection(nombre, notaUrgente) {
+  // Remove existing
+  document.getElementById('urgente-section')?.remove();
+  
+  const statsBar = document.querySelector('.seg-stats-bar');
+  if(!statsBar) return;
+  
+  const div = document.createElement('div');
+  div.id = 'urgente-section';
+  div.style.cssText = 'padding:10px 16px;border-bottom:1px solid var(--border);background:' + (notaUrgente?'rgba(245,82,74,.05)':'transparent');
+  
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;align-items:center';
+  
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'urgente-input';
+  inp.dataset.n = nombre;
+  inp.placeholder = '🚨 Nota urgente al alumno (lesión, aviso, restricción)...';
+  inp.value = notaUrgente || '';
+  inp.style.cssText = 'flex:1;background:var(--bg3);border:1px solid ' + (notaUrgente?'rgba(245,82,74,.5)':'var(--border2)') + ';border-radius:8px;padding:8px 12px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none';
+  
+  const btn = document.createElement('button');
+  btn.className = 'save-urgente-btn';
+  btn.dataset.n = nombre;
+  btn.textContent = notaUrgente ? '🚨 Actualizar' : '🚨 Guardar';
+  btn.style.cssText = 'background:var(--red-bg);color:var(--red);border:1px solid rgba(245,82,74,.35);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap;flex-shrink:0';
+  
+  row.appendChild(inp);
+  row.appendChild(btn);
+  div.appendChild(row);
+  
+  if(notaUrgente) {
+    const active = document.createElement('div');
+    active.style.cssText = 'margin-top:6px;padding:8px 10px;background:rgba(245,82,74,.1);border:1px solid rgba(245,82,74,.3);border-radius:8px;font-size:12px;color:var(--red)';
+    active.textContent = '🚨 Nota activa: ' + notaUrgente;
+    div.appendChild(active);
+  }
+  
+  statsBar.parentNode.insertBefore(div, statsBar);
 }
 
 async function switchSegTab(nombre, tab) {
@@ -1562,26 +1607,9 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
   if (tab === 'resumen') {
     const lastSes = misSesiones.slice(-1)[0];
     const prevSes = misSesiones.slice(-2,-1)[0];
-    const notaUrgente = d.notaUrgente||'';
     el.innerHTML =
-      // NOTA URGENTE (siempre visible si hay una)
-      '<div id="nota-urgente-wrap" style="' + (notaUrgente ? '' : 'display:none') + '">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;background:rgba(245,82,74,.12);border:1px solid rgba(245,82,74,.35);border-radius:10px;margin-bottom:14px">' +
-          '<span style="font-size:18px;flex-shrink:0">🚨</span>' +
-          '<div style="flex:1">' +
-            '<div style="font-size:10px;font-weight:600;color:var(--red);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">NOTA URGENTE DEL ENTRENADOR</div>' +
-            '<div id="nota-urgente-text" style="font-size:13px;color:var(--white)">' + (notaUrgente||'') + '</div>' +
-          '</div>' +
-          '<button class="clear-urgente-btn" data-n="'+nombre+'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">×</button>' +
-        '</div>' +
-      '</div>' +
-      // AGREGAR NOTA URGENTE
-      '<div style="margin-bottom:16px">' +
-        '<div style="display:flex;gap:6px">' +
-          '<input type="text" class="urgente-input" data-n="'+nombre+'" placeholder="🚨 Agregar nota urgente (lesión, aviso, restricción)..." value="' + notaUrgente.replace(/"/g,"'") + '" style="flex:1;background:var(--bg3);border:1px solid rgba(245,82,74,.3);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none">' +
-          '<button class="save-urgente-btn" data-n="'+nombre+'" style="background:var(--red-bg);color:var(--red);border:1px solid rgba(245,82,74,.35);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">Guardar</button>' +
-        '</div>' +
-      '</div>' +
+      // (nota urgente moved to profile header)
+
       // FASE Y CONTEXTO
       '<div class="seg-section">' +
         '<div class="seg-section-title">📋 Fase de entrenamiento</div>' +
