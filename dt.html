@@ -1354,7 +1354,7 @@ async function calcSesiones(nombre) {
   // Meta mensual según plan
   const sesPorSem = d.sesPorSemana || d.faseSesiones || 3;
   const planTipo = d.planTipo||'';
-  const metaMes = planTipo.includes('12') ? 12 : planTipo.includes('8') ? 8 : planTipo.includes('Híb') ? 4 : sesPorSem * 4;
+  const metaMes = planTipo.includes('16') ? 16 : planTipo.includes('12') ? 12 : planTipo.includes('8') ? 8 : planTipo.includes('Híb') ? 4 : planTipo.includes('1 clase') ? 4 : sesPorSem * 4;
 
   // Sesiones restantes según calendario real
   let restantes = 0;
@@ -1386,8 +1386,8 @@ async function getAlumnoData(nombre) {
   if (!data.planTipo) {
     const routine = SEED_DATA.students[nombre] || {};
     const dias = Object.keys(routine).length;
-    data.planTipo = dias >= 4 ? '12 clases/mes' : dias >= 3 ? '12 clases/mes' : dias >= 2 ? '8 clases/mes' : dias === 1 ? 'Híbrido 1x/sem' : '—';
-    data.sesPorSemana = dias >= 3 ? 3 : dias >= 2 ? 2 : 1;
+    data.planTipo = dias >= 4 ? '12 clases/mes' : dias >= 3 ? '12 clases/mes' : dias >= 2 ? '8 clases/mes' : dias === 1 ? '1 clase/sem' : '—';
+    data.sesPorSemana = dias >= 4 ? 3 : dias >= 3 ? 3 : dias >= 2 ? 2 : 1;
     data.faseSesiones = data.sesPorSemana;
   }
   return data;
