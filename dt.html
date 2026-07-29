@@ -217,14 +217,15 @@ tr:hover td{background:var(--cel-dim)}
         <thead><tr>
           <th>Alumno</th>
           <th>Plan</th>
-          <th>Sesiones mes</th>
-          <th>Restantes</th>
+          <th>Hechas/Meta</th>
+          <th>Perdidas</th>
+          <th>Quedan</th>
           <th>% Asistencia</th>
           <th>Total histórico</th>
           <th>Último estado</th>
           <th>Última sesión</th>
         </tr></thead>
-        <tbody id="nomina-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr></tbody>
+        <tbody id="nomina-tbody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -323,7 +324,7 @@ tr:hover td{background:var(--cel-dim)}
   <div class="screen" id="s-fichas">
     <div class="tbl-wrap">
       <table><thead><tr><th>Alumno</th><th>Peso</th><th>Altura</th><th>IMC</th><th>Obra social</th><th>Objetivo</th><th>DJ</th><th>Fecha</th></tr></thead>
-      <tbody id="fichas-tbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr></tbody></table>
+      <tbody id="fichas-tbody"><tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr></tbody></table>
     </div>
   </div>
 
@@ -531,7 +532,13 @@ async function syncConfig() {
   // Si hay pantallas activas, refrescar
   if (document.getElementById('s-profesor')?.classList.contains('on')) renderProfList('');
   if (document.getElementById('s-calendario')?.classList.contains('on')) renderCalendario();
-  if (document.getElementById('s-seguimiento')?.classList.contains('on')) { renderSegList(); if(segSelected) renderSegProfile(segSelected); }
+  if (document.getElementById('s-seguimiento')?.classList.contains('on')) {
+    renderSegList();
+    // Only re-render profile if user is not actively typing
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    if(segSelected && !isTyping) renderSegProfile(segSelected);
+  }
   if (document.getElementById('s-tv')?.classList.contains('on')) renderTvScreen();
 }
 
@@ -614,7 +621,7 @@ async function renderNomina() {
   const tbody = document.getElementById('nomina-tbody');
   const countEl = document.getElementById('nomina-count');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Cargando...</td></tr>';
 
   const students = await getStudents();
   const sesiones = window._sesiones || [];
@@ -643,7 +650,7 @@ async function renderNomina() {
   const rows = await Promise.all(filtered.map(async nombre => {
     const d = await getAlumnoData(nombre);
     const st = byStudent[nombre] || {total:0, last:'—', estado:'—'};
-    const {hechas, restantes, metaMes:esperadas, pct} = await calcSesiones(nombre);
+    const {hechas, restantes, perdidas, metaMes:esperadas, pct} = await calcSesiones(nombre);
     const planTipo = d.planTipo||'—';
     const estC = st.estado.includes('Sin')?'var(--green)':st.estado.includes('Lesion')?'var(--red)':st.estado==='—'?'var(--muted)':'var(--amber)';
     const sesC = hechas===0?'var(--muted)':restantes<=1?'var(--green)':'var(--amber)';
@@ -663,7 +670,7 @@ async function renderNomina() {
       '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--muted)">'+st.last+'</td>' +
     '</tr>';
   }));
-  tbody.innerHTML = rows.join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Sin alumnos</td></tr>';
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Sin alumnos</td></tr>';
 }
 
 
@@ -1321,7 +1328,7 @@ async function cargarDashboard() {
   // Fichas
   const ftbody = document.getElementById('fichas-tbody');
   if (ftbody) ftbody.innerHTML = fichas.length === 0
-    ? '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr>'
+    ? '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr>'
     : fichas.map(d => '<tr><td class="td-n">' + (d.nombre||'?') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.peso?d.peso+' kg':'—') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.altura?d.altura+' cm':'—') + '</td><td>' + (d.imc||'—') + '</td><td>' + (d.obraSocial||'—') + '</td><td>' + (d.objetivo||'—') + '</td><td>' + (d.declaracionJurada?'<span class="badge bg">✓</span>':'<span class="badge br">Pend</span>') + '</td><td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.fecha||'—') + '</td></tr>').join('');
 }
 
@@ -1332,15 +1339,11 @@ const DIAS_SEMANA = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','
 
 async function calcSesiones(nombre) {
   const viewNow = viewDate || new Date();
-  const isCurrent = isCurrentMonth ? isCurrentMonth() : true;
   const año = viewNow.getFullYear();
   const mes = viewNow.getMonth();
-  const hoy = isCurrent ? new Date().getDate() : new Date(año, mes+1, 0).getDate();
-  const diasEnMes = new Date(año, mes+1, 0).getDate();
   const mesStr = viewNow.toLocaleString('es-AR',{month:'long'}).toLowerCase();
   const añoStr = String(año);
 
-  const horarios = await getHorarios();
   const d = await getAlumnoData(nombre);
   const sesiones = window._sesiones || [];
 
@@ -1351,28 +1354,36 @@ async function calcSesiones(nombre) {
     return f.includes(añoStr) && f.includes(mesStr);
   }).length;
 
-  // Meta mensual según plan
+  // Meta mensual = el plan del alumno (clases del 1 al último día del mes)
+  const planTipo = d.planTipo || '';
   const sesPorSem = d.sesPorSemana || d.faseSesiones || 3;
-  const planTipo = d.planTipo||'';
-  const metaMes = planTipo.includes('16') ? 16 : planTipo.includes('12') ? 12 : planTipo.includes('8') ? 8 : planTipo.includes('Híb') ? 4 : planTipo.includes('1 clase') ? 4 : sesPorSem * 4;
+  const metaMes = planTipo.includes('16') ? 16
+    : planTipo.includes('12') ? 12
+    : planTipo.includes('8') ? 8
+    : planTipo.includes('Híb') ? 4
+    : planTipo.includes('1 clase') ? 1
+    : planTipo.includes('Online') ? sesPorSem * 4
+    : sesPorSem * 4;
 
-  // Sesiones restantes según calendario real
-  let restantes = 0;
-  const slots = horarios[nombre];
-  if (slots && (Array.isArray(slots) ? slots.length : true)) {
-    const arr = Array.isArray(slots) ? slots : [slots];
-    const diasAsignados = arr.map(s => s.dia);
-    for (let dia = hoy + 1; dia <= diasEnMes; dia++) {
-      const nombreDia = DIAS_SEMANA[new Date(año, mes, dia).getDay()];
-      if (diasAsignados.includes(nombreDia)) restantes++;
-    }
-  } else {
-    const diasRestantes = diasEnMes - hoy;
-    restantes = Math.round((diasRestantes / 7) * sesPorSem);
-  }
+  // Calcular clases perdidas y restantes
+  const now2 = new Date();
+  const isCurMonth = año === now2.getFullYear() && mes === now2.getMonth();
+  const diasEnMes = new Date(año, mes+1, 0).getDate();
+  const hoy = isCurMonth ? now2.getDate() : diasEnMes;
+
+  // Proporción del mes transcurrida → clases esperadas hasta hoy
+  const proporcion = hoy / diasEnMes;
+  const esperadasHastaHoy = Math.round(proporcion * metaMes);
+
+  // Perdidas = lo que se esperaba y no hizo (solo hasta hoy, no futuro)
+  const perdidas = Math.max(0, esperadasHastaHoy - hechas);
+
+  // Restantes = clases futuras del mes
+  const restantes = Math.max(0, metaMes - esperadasHastaHoy);
 
   const pct = metaMes > 0 ? Math.min(100, Math.round((hechas / metaMes) * 100)) : 0;
-  return {hechas, restantes, metaMes, pct, diasEnMes, hoy};
+
+  return {hechas, restantes, perdidas, metaMes, pct};
 }
 
 // ── DATOS DE SEGUIMIENTO POR ALUMNO ──────────────────────────────────────────
@@ -1492,7 +1503,7 @@ async function renderSegProfile(nombre) {
   const sesiones = window._sesiones || [];
   const misSesiones = sesiones.filter(s => s.nombre===nombre);
   const notaUrgente = d.notaUrgente || '';
-  const {hechas:sesMes, restantes, metaMes:esperadas, pct} = await calcSesiones(nombre);
+  const {hechas:sesMes, restantes, perdidas, metaMes:esperadas, pct} = await calcSesiones(nombre);
   const plan = d.planTipo||'';
   const lastSes = misSesiones.slice(-1)[0];
   const lastEstado = lastSes?.reporte?.estado||'—';
@@ -1526,8 +1537,9 @@ async function renderSegProfile(nombre) {
     '</div>' +
     // STATS BAR
     '<div class="seg-stats-bar">' +
-      '<div class="seg-stat-box"><div class="seg-stat-num" style="color:var(--green)">'+sesMes+'</div><div class="seg-stat-lbl">Hechas este mes</div><div style="font-size:10px;color:var(--muted);margin-top:2px">meta: '+esperadas+'</div></div>' +
-      '<div class="seg-stat-box"><div class="seg-stat-num" style="color:'+(restantes<=2?'var(--green)':restantes<=5?'var(--amber)':'var(--red)')+'">'+restantes+'</div><div class="seg-stat-lbl">Quedan este mes</div><div style="font-size:10px;color:var(--muted);margin-top:2px">días con entreno</div></div>' +
+      '<div class="seg-stat-box"><div class="seg-stat-num" style="color:var(--green)">'+sesMes+'<span style="font-size:12px;color:var(--muted)">/'+esperadas+'</span></div><div class="seg-stat-lbl">Hechas</div></div>' +
+      '<div class="seg-stat-box"><div class="seg-stat-num" style="color:'+(perdidas>0?'var(--red)':'var(--muted)')+'">'+perdidas+'</div><div class="seg-stat-lbl">Perdidas</div></div>' +
+      '<div class="seg-stat-box"><div class="seg-stat-num" style="color:'+(restantes<=2?'var(--green)':restantes<=5?'var(--amber)':'var(--red)')+'">'+restantes+'</div><div class="seg-stat-lbl">Quedan</div></div>' +
       '<div class="seg-stat-box">' +
         '<div class="seg-stat-num">'+pct+'<span style="font-size:14px">%</span></div>' +
         '<div class="seg-stat-lbl">Cumplimiento</div>' +
@@ -1551,8 +1563,13 @@ async function renderSegProfile(nombre) {
 }
 
 function injectUrgenteSection(nombre, notaUrgente) {
-  // Remove existing
-  document.getElementById('urgente-section')?.remove();
+  // Don't re-render if user is actively typing in the input
+  const existing = document.getElementById('urgente-section');
+  if(existing) {
+    const inp = existing.querySelector('.urgente-input');
+    if(inp && document.activeElement === inp) return; // user is typing - don't interrupt
+    existing.remove();
+  }
   
   const statsBar = document.querySelector('.seg-stats-bar');
   if(!statsBar) return;
