@@ -644,10 +644,18 @@ window._fbGetRutina = async (nombre) => {
 async function cargarInfoAlumno(nombre) {
   try {
     // Get seguimiento data (metas, nota urgente, plan)
-    const r = await fetch(FB_URL + '/seguimiento/' + encodeURIComponent(nombre) + '?key=' + FB_KEY_P);
+    const url = FB_URL + '/seguimiento/' + encodeURIComponent(nombre) + '?key=' + FB_KEY_P;
+    const r = await fetch(url);
+    console.log('[Urgente] Seguimiento status:', r.status, 'para', nombre);
     if(r.ok) {
       const doc = await r.json();
+      console.log('[Urgente] Doc fields:', Object.keys(doc.fields||{}));
+      // Read notaUrgente directly from fields (bypass _parseDoc for reliability)
+      const notaDirecta = doc.fields?.notaUrgente?.stringValue || '';
       const d = _parseDoc(doc) || {};
+      // Merge
+      if(notaDirecta) d.notaUrgente = notaDirecta;
+      console.log('[Urgente] notaUrgente:', d.notaUrgente || '(vacía)');
       window._alumnoData = d;
 
       // Show nota urgente
