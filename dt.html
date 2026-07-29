@@ -1349,7 +1349,7 @@ async function calcSesiones(nombre) {
 
   // Sesiones hechas este mes
   const hechas = sesiones.filter(s => {
-    if (s.nombre !== nombre) return false;
+    if (!s.nombre || s.nombre.trim().toLowerCase() !== nombre.trim().toLowerCase()) return false;
     const f = (s.fecha||'').toLowerCase();
     return f.includes(añoStr) && f.includes(mesStr);
   }).length;
@@ -1500,13 +1500,20 @@ async function renderSegProfile(nombre) {
   const profile = document.getElementById('seg-profile');
   if (!profile) return;
   const d = await getAlumnoData(nombre);
+  // Reload sessions if empty
+  if (!window._sesiones || window._sesiones.length === 0) {
+    try { window._sesiones = await fsGet('sesiones'); } catch(e) {}
+  }
   const sesiones = window._sesiones || [];
-  const misSesiones = sesiones.filter(s => s.nombre===nombre);
+  const misSesiones = sesiones.filter(s => s.nombre && s.nombre.trim().toLowerCase() === nombre.trim().toLowerCase());
   const notaUrgente = d.notaUrgente || '';
   const {hechas:sesMes, restantes, perdidas, metaMes:esperadas, pct} = await calcSesiones(nombre);
   const plan = d.planTipo||'';
   const lastSes = misSesiones.slice(-1)[0];
-  const lastEstado = lastSes?.reporte?.estado||'—';
+  // Handle both object format and string format for reporte
+  const lastReporte = lastSes?.reporte || {};
+  const lastEstado = (typeof lastReporte === 'object' ? lastReporte.estado : '') || lastSes?.estado || '—';
+  const lastFechaStr = lastSes?.fecha || '—';
   const lastEstC = lastEstado.includes('Sin')?'var(--green)':lastEstado.includes('Lesion')?'var(--red)':'var(--amber)';
 
   // Build profile HTML
@@ -1546,7 +1553,7 @@ async function renderSegProfile(nombre) {
         '<div class="prog-bar-wrap" style="margin:4px 0 0"><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:'+pct+'%;background:'+(pct>=80?'var(--green)':pct>=50?'var(--amber)':'var(--red)')+'"></div></div></div>' +
       '</div>' +
       '<div class="seg-stat-box"><div class="seg-stat-num" style="font-size:14px;padding-top:6px;color:'+lastEstC+'">'+lastEstado+'</div><div class="seg-stat-lbl">Último estado</div></div>' +
-      '<div class="seg-stat-box"><div class="seg-stat-num" style="font-size:13px;padding-top:7px">'+( lastSes?.fecha||'—')+'</div><div class="seg-stat-lbl">Última sesión</div></div>' +
+      '<div class="seg-stat-box"><div class="seg-stat-num" style="font-size:13px;padding-top:7px">'+lastFechaStr+'</div><div class="seg-stat-lbl">Última sesión</div></div>' +
     '</div>' +
     // TABS
     '<div class="seg-tabs">' +
@@ -1613,7 +1620,7 @@ async function switchSegTab(nombre, tab) {
   segActiveTab = tab;
   document.querySelectorAll('.seg-tab').forEach(t => t.classList.toggle('on', t.textContent.toLowerCase()===tab));
   const d = await getAlumnoData(nombre);
-  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre===nombre);
+  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre && s.nombre.trim().toLowerCase()===nombre.trim().toLowerCase());
   await renderSegTab(nombre, tab, d, misSesiones);
 }
 
@@ -1829,7 +1836,7 @@ async function agregarNota(nombre) {
   d.notas.push({fecha: new Date().toLocaleDateString('es-AR'), texto});
   await saveAlumnoData(nombre, d);
   input.value = '';
-  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre===nombre);
+  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre && s.nombre.trim().toLowerCase()===nombre.trim().toLowerCase());
   await renderSegTab(nombre, 'notas', d, misSesiones);
   showToast('✓ Nota agregada');
 }
@@ -1839,7 +1846,7 @@ async function eliminarNota(nombre, idx) {
   if (!d.notas) return;
   d.notas.splice(idx, 1);
   await saveAlumnoData(nombre, d);
-  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre===nombre);
+  const misSesiones = (window._sesiones||[]).filter(s=>s.nombre && s.nombre.trim().toLowerCase()===nombre.trim().toLowerCase());
   await renderSegTab(nombre, 'notas', d, misSesiones);
   showToast('Nota eliminada');
 }
@@ -1910,7 +1917,15 @@ function editarAlumno(nombre) {
       '</div>'+
       '<button onclick="agregarMeta()" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(20,190,121,.3);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:Inter,sans-serif">+ Agregar meta</button>'+
     '</div>'+
+
     '<div style="margin-bottom:14px">'+
+      '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📦 Tipo de plan</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      ['16 clases/mes','12 clases/mes','8 clases/mes','Híbrido (1+2)','1 clase/sem','Online'].map(t =>
+        '<button onclick="selPlanTipo(\''+t+'\',this)" class="seg-btn" style="'+(d.planTipo===t?'background:var(--green);color:var(--bg);border-color:var(--green)':'background:var(--bg3);color:var(--text2);border:1px solid var(--border)')+'">' + t + '</button>'
+      ).join('')+
+      '</div>'+
+    '</div>'+    '<div style="margin-bottom:14px">'+
       '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📋 Fase actual</div>'+
       '<input type="text" id="edit-fase" value="'+(d.fase||'')+'" placeholder="Ej: PPG 3x10 RPE4" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;margin-bottom:8px">'+
       '<div style="display:flex;gap:8px">'+
@@ -1995,7 +2010,7 @@ function generarReporte(nombre) {
   const d = getAlumnoData(nombre);
   const sesiones = window._sesiones || [];
   const stats = {};
-  sesiones.filter(s => s.nombre === nombre).forEach(s => {
+  sesiones.filter(s => s.nombre && s.nombre.trim().toLowerCase() === nombre.trim().toLowerCase()).forEach(s => {
     if (!stats.primera || s.fecha < stats.primera) stats.primera = s.fecha;
     if (!stats.ultima || s.fecha > stats.ultima) stats.ultima = s.fecha;
     stats.total = (stats.total||0) + 1;
@@ -2163,7 +2178,7 @@ document.addEventListener('click', async function(e) {
     showToast('Nota urgente eliminada');
   }
   if (t.classList.contains('save-urgente-btn')) {
-    const inp = document.querySelector('.urgente-input');
+    const inp = document.querySelector(`.urgente-input[data-n="${n}"]`) || document.querySelector('.urgente-input');
     const texto = inp?.value?.trim()||'';
     const d = await getAlumnoData(n); d.notaUrgente = texto; await saveAlumnoData(n, d);
     const w = document.getElementById('nota-urgente-wrap'); 
