@@ -651,13 +651,25 @@ async function cargarInfoAlumno(nombre) {
     console.log('[Urgente] Seguimiento status:', r.status, 'para', nombre);
     if(r.ok) {
       const doc = await r.json();
-      console.log('[Urgente] Doc fields:', Object.keys(doc.fields||{}));
-      // Read notaUrgente directly from fields (bypass _parseDoc for reliability)
+      // DT stores everything inside {data: {stringValue: JSON.stringify(...)}}
+      // Try both formats: nested data field AND direct fields
+      let d = {};
+      try {
+        const dataStr = doc.fields?.data?.stringValue;
+        if(dataStr) {
+          d = JSON.parse(dataStr); // main format used by DT
+        } else {
+          d = _parseDoc(doc) || {}; // fallback
+        }
+      } catch(e) {
+        d = _parseDoc(doc) || {};
+      }
+      // Also check direct field as fallback
       const notaDirecta = doc.fields?.notaUrgente?.stringValue || '';
-      const d = _parseDoc(doc) || {};
-      // Merge
-      if(notaDirecta) d.notaUrgente = notaDirecta;
-      console.log('[Urgente] notaUrgente:', d.notaUrgente || '(vacía)');
+      if(!d.notaUrgente && notaDirecta) d.notaUrgente = notaDirecta;
+      
+      window._alumnoData = d;
+      console.log('[Urgente] data parsed, notaUrgente:', d.notaUrgente || '(ninguna)', 'planTipo:', d.planTipo || '(ninguno)');
       window._alumnoData = d;
 
       // Show nota urgente
@@ -695,9 +707,10 @@ async function cargarInfoAlumno(nombre) {
     const now = new Date();
     const mesStr = now.toLocaleString('es-AR',{month:'long'}).toLowerCase();
     const añoStr = String(now.getFullYear());
+    const mesNum2 = String(now.getMonth()+1).padStart(2,'0');
     const sesMes = sesiones.filter(s => {
-      const f = (s.fecha||'').toLowerCase();
-      return f.includes(añoStr) && f.includes(mesStr);
+      const f = s.fecha||'';
+      return f.includes('/'+mesNum2+'/'+añoStr) || (f.toLowerCase().includes(mesStr) && f.includes(añoStr));
     }).length;
     const total = sesiones.length;
     const lastSes = sesiones[0];
