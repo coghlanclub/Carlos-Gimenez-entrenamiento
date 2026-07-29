@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test Sistema</title>
+<style>
+body{font-family:monospace;background:#0A1628;color:#F0F6FF;padding:20px;max-width:600px;margin:0 auto}
+h2{color:#14BE79}
+.ok{color:#14BE79}.err{color:#F5524A}.warn{color:#F5A623}.info{color:#9FC8FF}
+.test{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:13px}
+button{background:#14BE79;color:#000;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;margin:4px}
+#log{margin-top:16px}
+</style>
+</head>
+<body>
+<h2>🔍 Test Sistema Coghlan Club</h2>
+<button onclick="runAll()">▶ Correr todos los tests</button>
+<button onclick="document.getElementById('log').innerHTML=''">🗑 Limpiar</button>
+<div id="log"></div>
+
+<script>
+const BASE = 'https://firestore.googleapis.com/v1/projects/box-carlos-gimenez/databases/(default)/documents';
+const KEY = 'AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo';
+
+function log(msg, cls='info') {
+  document.getElementById('log').innerHTML += `<div class="test ${cls}">${msg}</div>`;
+}
+
+async function runAll() {
+  document.getElementById('log').innerHTML = '';
+  log('=== TEST 1: Conexión Firebase ===', 'info');
+  await testFirebase();
+  log('=== TEST 2: Sesiones y fechas ===', 'info');
+  await testSesiones();
+  log('=== TEST 3: Nota urgente ===', 'info');
+  await testNotaUrgente();
+  log('=== TEST 4: Seguimiento / plan ===', 'info');
+  await testSeguimiento();
+  log('=== LISTO ===', 'info');
+}
+
+async function testFirebase() {
+  try {
+    const r = await fetch(BASE + '/sesiones?pageSize=5&key=' + KEY);
+    if(!r.ok) { log('❌ Firebase error HTTP: ' + r.status, 'err'); return; }
+    const data = await r.json();
+    const docs = data.documents || [];
+    log('✅ Firebase conecta — ' + docs.length + ' sesiones (muestra)', 'ok');
+    if(docs.length > 0) {
+      const f = docs[0].fields || {};
+      const nombre = f.nombre?.stringValue || '?';
+      const fecha = f.fecha?.stringValue || '?';
+      const tieneData = !!f.data?.stringValue;
+      const tieneRegistros = !!f.registros?.mapValue;
+      log(`   Primera sesión: ${nombre} · ${fecha}`, 'info');
+      log(`   Formato: data=${tieneData} · registros=${tieneRegistros}`, tieneData||tieneRegistros?'ok':'warn');
+      if(!tieneRegistros && !tieneData) log('⚠️ Las sesiones no tienen pesos guardados', 'warn');
+    }
+  } catch(e) { log('❌ Firebase no conecta: ' + e.message, 'err'); }
+}
+
+async function testSesiones() {
+  try {
+    const r = await fetch(BASE + '/sesiones?pageSize=200&key=' + KEY);
+    const data = await r.json();
+    const docs = data.documents || [];
+    log('Total sesiones en Firebase: ' + docs.length, docs.length>0?'ok':'warn');
+
+    // Check date format
+    const nombres = {};
+    const meses = {};
+    docs.forEach(doc => {
+      const f = doc.fields || {};
+      const nombre = f.nombre?.stringValue || '?';
+      const fecha = f.fecha?.stringValue || '?';
+      nombres[nombre] = (nombres[nombre]||0) + 1;
+      // Extract month
+      const parts = fecha.split('/');
+      if(parts.length === 3) {
+        const key = parts[1] + '/' + parts[2]; // "07/2026"
+        meses[key] = (meses[key]||0) + 1;
+      }
+    });
+
+    log('Alumnos con sesiones:', 'info');
+    Object.entries(nombres).sort().forEach(([n,c]) => log(`   ${n}: ${c} sesiones`, 'ok'));
+    
+    log('Sesiones por mes:', 'info');
+    Object.entries(meses).sort().forEach(([m,c]) => log(`   ${m}: ${c} sesiones`, 'ok'));
+
+    // Test date filter for current month
+    const now = new Date();
+    const mesNum = String(now.getMonth()+1).padStart(2,'0');
+    const año = String(now.getFullYear());
+    const esMes = docs.filter(doc => {
+      const fecha = doc.fields?.fecha?.stringValue || '';
+      return fecha.includes('/'+mesNum+'/'+año);
+    });
+    log(`Sesiones julio 2026 (/07/2026): ${esMes.length}`, esMes.length>0?'ok':'warn');
+  } catch(e) { log('❌ Error: ' + e.message, 'err'); }
+}
+
+async function testNotaUrgente() {
+  try {
+    // Test with first student that has seguimiento
+    const r = await fetch(BASE + '/seguimiento?pageSize=5&key=' + KEY);
+    const data = await r.json();
+    const docs = data.documents || [];
+    log('Documentos seguimiento: ' + docs.length, docs.length>0?'ok':'warn');
+    
+    if(docs.length === 0) {
+      log('⚠️ No hay documentos en seguimiento — nunca se guardó nada desde el DT', 'warn');
+      return;
+    }
+
+    docs.forEach(doc => {
+      const id = doc.name.split('/').pop();
+      const f = doc.fields || {};
+      const tieneData = !!f.data?.stringValue;
+      const tieneNota = !!f.notaUrgente?.stringValue;
+      
+      let notaUrgente = '';
+      if(tieneData) {
+        try {
+          const parsed = JSON.parse(f.data.stringValue);
+          notaUrgente = parsed.notaUrgente || '';
+        } catch(e) {}
+      } else if(tieneNota) {
+        notaUrgente = f.notaUrgente.stringValue;
+      }
+      
+      log(`   ${id}: formato=${tieneData?'data-json':'directo'} · nota="${notaUrgente||'(vacía)'}"`, 
+          notaUrgente?'ok':'info');
+    });
+  } catch(e) { log('❌ Error: ' + e.message, 'err'); }
+}
+
+async function testSeguimiento() {
+  try {
+    const r = await fetch(BASE + '/seguimiento?pageSize=20&key=' + KEY);
+    const data = await r.json();
+    const docs = data.documents || [];
+    
+    docs.forEach(doc => {
+      const id = doc.name.split('/').pop();
+      const f = doc.fields || {};
+      let plan = '', sesXSem = '';
+      if(f.data?.stringValue) {
+        try {
+          const parsed = JSON.parse(f.data.stringValue);
+          plan = parsed.planTipo || '(sin plan)';
+          sesXSem = parsed.sesPorSemana || '?';
+        } catch(e) {}
+      }
+      log(`   ${id}: plan="${plan}" · ses/sem=${sesXSem}`, plan?'ok':'warn');
+    });
+
+    if(docs.length === 0) {
+      log('⚠️ Sin datos de seguimiento — asigná planes desde el DT → Seguimiento → Editar', 'warn');
+    }
+  } catch(e) { log('❌ Error: ' + e.message, 'err'); }
+}
+</script>
+</body>
+</html>
