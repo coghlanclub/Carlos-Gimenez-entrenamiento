@@ -951,10 +951,11 @@ async function entrar(nombre) {
     studentData = todasRutinas[meses[0]];
   }
   
-  // Also check SEED_DATA for F1/F2 structure already defined
+  // SEED_DATA F1/F2 structure always wins
   const seedDias = Object.keys(SEED_DATA.students[nombre] || {});
   const seedHasPhases = seedDias.some(d => d.startsWith('F1') || d.startsWith('F2'));
-  if(seedHasPhases && Object.keys(allFasesDias).length === 0) {
+  if(seedHasPhases) {
+    // Always use SEED_DATA if it has phases defined
     studentData = SEED_DATA.students[nombre];
   }
   
@@ -1011,13 +1012,13 @@ async function entrar(nombre) {
         return;
       }
       // Extract bloque from exercise name (e.g. "1 - Sentadillas" → bloque "1")
-      const bloqueMatch = ej.name.match(/^(\d+)\s*[-–]/);
+      const bloqueMatch = ej.name.match(/^B?(\d+)\s*[-–]/);
       const bloque = bloqueMatch ? bloqueMatch[1] : null;
       if(bloque && bloque !== currentBloque) {
         currentBloque = bloque;
         html += `<div class="bloque-hdr">Bloque ${bloque}</div>`;
       }
-      const cleanName = ej.name.replace(/^\d+\s*[-–]\s*/, '');
+      const cleanName = ej.name.replace(/^B?(\d+)\s*[-–]\s*/, '');
       const meta = [ej.series && ej.reps ? `${ej.series} × ${ej.reps}` : ej.reps || ''].filter(Boolean).join(' · ');
       // Last week reference
       const ref = ej.weeks ? ej.weeks.filter(w=>w&&w!=='-'&&w!=='—').slice(-1)[0] || '' : '';
