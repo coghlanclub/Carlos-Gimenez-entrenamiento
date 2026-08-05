@@ -561,17 +561,33 @@ async function cargarInfoAlumno(nombre) {
   window._alumnoData = seg;
 
   const nota = seg.notaUrgente || '';
+  const notaLesion = seg.notaLesion || '';
   const urgEl = document.getElementById('nota-urgente-alumno');
   if (urgEl) {
+    let html = '';
+    // Lesion note — always shown if exists (permanent)
+    if (notaLesion) {
+      html += '<div style="display:flex;gap:10px;align-items:flex-start;' +
+        'background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.35);' +
+        'margin:12px 16px 4px;border-radius:12px;padding:12px 16px;color:#F0F6FF">' +
+        '<div style="font-size:18px;flex-shrink:0">⚠️</div>' +
+        '<div><div style="font-size:10px;font-weight:700;color:rgba(245,166,35,1);' +
+        'text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">LESIÓN — SIEMPRE PRESENTE</div>' +
+        '<div style="font-size:13px;line-height:1.4;color:rgba(240,246,255,.8)">' + notaLesion + '</div></div></div>';
+    }
+    // Urgente note — can change
     if (nota) {
-      urgEl.style.cssText = 'display:flex;gap:10px;align-items:flex-start;' +
+      html += '<div style="display:flex;gap:10px;align-items:flex-start;' +
         'background:rgba(245,82,74,.12);border:1px solid rgba(245,82,74,.35);' +
-        'margin:12px 16px 0;border-radius:12px;padding:14px 16px;color:#F0F6FF';
-      urgEl.innerHTML =
+        'margin:4px 16px 0;border-radius:12px;padding:14px 16px;color:#F0F6FF">' +
         '<div style="font-size:22px;flex-shrink:0">🚨</div>' +
         '<div><div style="font-size:11px;font-weight:700;color:rgba(245,82,74,1);' +
         'text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">AVISO DE TU ENTRENADOR</div>' +
-        '<div style="font-size:15px;font-weight:500;line-height:1.4">' + nota + '</div></div>';
+        '<div style="font-size:15px;font-weight:500;line-height:1.4">' + nota + '</div></div></div>';
+    }
+    if (html) {
+      urgEl.style.display = 'block';
+      urgEl.innerHTML = html;
     } else {
       urgEl.style.display = 'none';
     }
