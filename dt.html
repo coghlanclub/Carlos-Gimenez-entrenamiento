@@ -2335,6 +2335,32 @@ async function confirmarAjuste() {
   }
 }
 
+
+// ── HISTORIAL INMUTABLE (todo cambio queda guardado) ─────────────────────────
+function appendHistorial(d, tipo, valor, extra={}) {
+  if(!d.historial) d.historial = [];
+  const fecha = new Date().toLocaleDateString('es-AR');
+  d.historial.push({tipo, valor, fecha, ...extra});
+}
+
+// ── AGREGAR SESIÓN RÁPIDA ─────────────────────────────────────────────────────
+async function agregarSesionRapida(nombre) {
+  const now = new Date();
+  const fecha = now.getDate()+'/'+(now.getMonth()+1)+'/'+now.getFullYear();
+  const nota = prompt('Justificación para la sesión de ' + nombre + ':', 'Sesión con entrenador');
+  if(nota === null) return;
+  try {
+    await fsAdd('sesiones', {
+      nombre, fecha, dia:'Sesión manual',
+      timestamp: now.toISOString(),
+      reporte: {estado:'Sin molestias', rpe:'—', nota: nota||'Registrada manualmente'},
+      registros: {}
+    });
+    showToast('✅ Sesión agregada — '+nombre+' · '+fecha);
+    setTimeout(()=>cargarDashboard(), 500);
+  } catch(e){ alert('Error: '+e.message); }
+}
+
 </script>
 
 <!-- MODAL AJUSTAR SESIÓN -->
