@@ -271,6 +271,7 @@ tr:hover td{background:var(--cel-dim)}
         <div class="seg-filters">
           <button class="seg-filter on" data-f="todos" onclick="setSegFilter('todos',this)">Todos</button>
           <button class="seg-filter" data-f="activos" onclick="setSegFilter('activos',this)">Con sesiones</button>
+          <button class="seg-filter" data-f="listas" onclick="setSegFilter('listas',this)">✅ Listas p/avanzar</button>
           <button class="seg-filter" data-f="metas" onclick="setSegFilter('metas',this)">Con metas</button>
           <button class="seg-filter" data-f="12c" onclick="setSegFilter('12c',this)">12c</button>
           <button class="seg-filter" data-f="8c" onclick="setSegFilter('8c',this)">8c</button>
@@ -455,6 +456,25 @@ function fsDocToObj(doc) {
   return obj;
 }
 
+// ── RESPALDO A GOOGLE SHEETS DE CAMBIOS DEL DT ───────────────────────────────
+// Antes, los cambios hechos acá (fase, notas, plan, metas) solo quedaban en
+// Firebase — no llegaban al Excel de respaldo. Ahora sí, igual que las
+// sesiones y fichas del portal del alumno.
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbz3HqxubOzSmg09tIJzGHHioV9THvGehtBssD__o4GDK4Eg5X7c9RKnnv0apth2luuPJA/exec';
+function backupCambioDT(nombre, campo, valorAnterior, valorNuevo, detalle) {
+  try {
+    fetch(SHEETS_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        tipo: 'DT_CAMBIO', nombre, campo,
+        valorAnterior: valorAnterior || '', valorNuevo: valorNuevo || '',
+        detalle: detalle || ''
+      })
+    });
+  } catch(e) { console.warn('[Sheets] Error backup DT:', e); }
+}
+
 // Verificar si fecha pertenece a mes (acepta "21/7/2026" y "21/07/2026")
 function _fechaEsMes(fecha, mes1based, anio) {
   const f = fecha || '';
@@ -463,16 +483,67 @@ function _fechaEsMes(fecha, mes1based, anio) {
   return f.includes('/' + m + '/' + a) || f.includes('/' + m.padStart(2,'0') + '/' + a);
 }
 
-async function fsGet(col) {
-  try {
-    const r = await fetch(FB_BASE + '/' + col + '?pageSize=200&key=' + FB_KEY);
-    if (!r.ok) return [];
-    const d = await r.json();
-    return (d.documents || []).map(fsDocToObj);
-  } catch(e) { return []; }
+// ── PROGRESO DE FASE ─────────────────────────────────────────────────────────
+// Convierte fechas escritas a mano ("01/07/2026", "jul/2026", "Julio 2026") a
+// un objeto Date. Si solo hay mes/año, asume el día 1 (aproximado).
+const _MESES_ABR = {ene:0,feb:1,mar:2,abr:3,may:4,jun:5,jul:6,ago:7,sep:8,set:8,oct:9,nov:10,dic:11};
+function parseFechaAprox(str) {
+  if (!str) return null;
+  const s = str.trim().toLowerCase();
+  // dd/mm/yyyy o d/m/yyyy
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+  // "jul/2026", "jul 2026", "julio 2026", "julio/2026"
+  m = s.match(/^([a-záéíóú]+)[\/\s]+(\d{4})$/);
+  if (m) {
+    const abr = m[1].slice(0,3).replace('á','a').replace('é','e');
+    if (abr in _MESES_ABR) return new Date(+m[2], _MESES_ABR[abr], 1);
+  }
+  return null;
 }
 
-async function fsAdd(col, datos) {
+// Sesiones/semanas transcurridas en la fase actual + si ya cumplió la meta
+// (d.faseMetaSesiones, definida a mano por Carlos por alumno).
+function calcFaseProgreso(d, misSesiones) {
+  const inicio = parseFechaAprox(d.faseInicio);
+  if (!inicio) return {sesionesEnFase: null, semanas: null, meta: d.faseMetaSesiones||null, listo: false};
+  const sesionesEnFase = (misSesiones||[]).filter(s => {
+    const f = _parseFechaSesion(s.fecha);
+    return f && f >= inicio;
+  }).length;
+  const semanas = Math.max(0, Math.floor((Date.now() - inicio.getTime()) / (7*24*60*60*1000)));
+  const meta = d.faseMetaSesiones || null;
+  const listo = !!(meta && sesionesEnFase >= meta);
+  return {sesionesEnFase, semanas, meta, listo};
+}
+
+// Sesiones se guardan como "21/7/2026" (formato AR, d/m/yyyy)
+function _parseFechaSesion(str) {
+  if (!str) return null;
+  const m = String(str).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return new Date(+m[3], +m[2]-1, +m[1]);
+}
+
+async function fsGet(col) {
+  const out = [];
+  let pageToken = '';
+  try {
+    for (let safety = 0; safety < 25; safety++) { // pagina hasta 5000 docs
+      const url = FB_BASE + '/' + col + '?pageSize=200&key=' + FB_KEY +
+                  (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+      const r = await fetch(url);
+      if (!r.ok) break;
+      const d = await r.json();
+      (d.documents || []).forEach(doc => out.push(fsDocToObj(doc)));
+      if (!d.nextPageToken) break;
+      pageToken = d.nextPageToken;
+    }
+  } catch(e) { console.warn('[FB] Error fsGet:', e); }
+  return out;
+}
+
+async function _fsAddOnce(col, datos) {
   try {
     const fields = {};
     for (const [k, v] of Object.entries(datos)) {
@@ -487,12 +558,23 @@ async function fsAdd(col, datos) {
       }
     }
     fields.timestamp = {timestampValue: new Date().toISOString()};
-    await fetch(FB_BASE + '/' + col + '?key=' + FB_KEY, {
+    const r = await fetch(FB_BASE + '/' + col + '?key=' + FB_KEY, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({fields})
     });
-    return true;
-  } catch(e) { return false; }
+    if (!r.ok) console.warn('[FB] fsAdd falló, status', r.status, col, datos);
+    return r.ok;
+  } catch(e) { console.warn('[FB] Error de red en fsAdd:', e); return false; }
+}
+
+// Con reintentos — antes se descartaba el resultado y una falla HTTP (ej. reglas
+// vencidas → 403) pasaba desapercibida.
+async function fsAdd(col, datos) {
+  for (let intento = 0; intento < 3; intento++) {
+    if (await _fsAddOnce(col, datos)) return true;
+    if (intento < 2) await new Promise(res => setTimeout(res, 800));
+  }
+  return false;
 }
 
 // ── STORAGE — FIREBASE SYNC ──────────────────────────────────────────────────
@@ -513,21 +595,67 @@ async function fsRead(col, doc) {
   } catch(e) { return _mem[k] || null; }
 }
 
-// Escribir en Firestore (y actualizar caché)
-async function fsWrite(col, doc, data) {
-  const k = col+'/'+doc;
-  _mem[k] = data; // actualizar caché inmediatamente
+// Escribir en Firestore (y actualizar caché) — con reintentos y chequeo real
+// de éxito. Antes: fetch() no tira excepción con errores HTTP (403 por reglas
+// vencidas, 400, etc.), así que un guardado podía fallar sin que nadie se
+// enterara. Ahora se reintenta y, si falla igual, se avisa por consola y
+// SIEMPRE queda el respaldo en localStorage (antes solo pasaba si había
+// corte de red, no en fallos HTTP).
+async function _fsWriteOnce(col, doc, data) {
   try {
-    await fetch(FB_BASE+'/'+col+'/'+doc+'?updateMask.fieldPaths=data&key='+FB_KEY, {
+    const r = await fetch(FB_BASE+'/'+col+'/'+doc+'?updateMask.fieldPaths=data&key='+FB_KEY, {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({fields: {data: {stringValue: JSON.stringify(data)}}})
     });
-  } catch(e) { 
-    // Fallback a localStorage
-    try { localStorage.setItem('cg_'+col+'_'+doc, JSON.stringify(data)); } catch(e2) {}
+    if (!r.ok) console.warn('[FB] fsWrite falló, status', r.status, col+'/'+doc);
+    return r.ok;
+  } catch(e) {
+    console.warn('[FB] Error de red en fsWrite:', e);
+    return false;
   }
 }
+
+async function fsWrite(col, doc, data) {
+  const k = col+'/'+doc;
+  _mem[k] = data; // actualizar caché en memoria inmediatamente (optimista)
+  let ok = false;
+  for (let intento = 0; intento < 3 && !ok; intento++) {
+    ok = await _fsWriteOnce(col, doc, data);
+    if (!ok && intento < 2) await new Promise(res => setTimeout(res, 800));
+  }
+  // Respaldo local SIEMPRE (no solo cuando hay excepción de red), y si Firebase
+  // terminó fallando, se marca como pendiente para reintentar más tarde.
+  try { localStorage.setItem('cg_'+col+'_'+doc, JSON.stringify(data)); } catch(e2) {}
+  if (!ok) {
+    try {
+      const pend = JSON.parse(localStorage.getItem('cg_pendientes_dt') || '[]');
+      pend.push({col, doc, data, ts: Date.now()});
+      localStorage.setItem('cg_pendientes_dt', JSON.stringify(pend));
+    } catch(e3) {}
+  }
+  return ok;
+}
+
+// Reintenta los guardados del DT que quedaron pendientes (reglas vencidas,
+// sin señal, etc.) — se llama al abrir el dashboard y cada 60s.
+async function flushPendingDT() {
+  let pend;
+  try { pend = JSON.parse(localStorage.getItem('cg_pendientes_dt') || '[]'); }
+  catch(e) { return; }
+  if (!pend.length) return;
+  const restantes = [];
+  for (const item of pend) {
+    const ok = await _fsWriteOnce(item.col, item.doc, item.data);
+    if (!ok) restantes.push(item);
+  }
+  localStorage.setItem('cg_pendientes_dt', JSON.stringify(restantes));
+  if (pend.length !== restantes.length) {
+    console.log('[FB] DT: sincronizados', pend.length - restantes.length, 'guardados pendientes.');
+  }
+}
+flushPendingDT();
+setInterval(flushPendingDT, 60000);
 
 // Fallback a localStorage si Firebase no responde
 function lsGet(k) { try { return JSON.parse(localStorage.getItem('cg_'+k)); } catch(e) { return null; } }
@@ -1350,6 +1478,7 @@ async function cargarDashboard() {
   // Seguimiento
   // Store sesiones globally for seguimiento tab
   window._sesiones = sesiones;
+  window._fichas = fichas;
   window._hoyDocs = hoyDocs;
   if (document.getElementById('s-seguimiento').classList.contains('on')) renderSegList();
 
@@ -1357,7 +1486,7 @@ async function cargarDashboard() {
   const ftbody = document.getElementById('fichas-tbody');
   if (ftbody) ftbody.innerHTML = fichas.length === 0
     ? '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px">Sin fichas aún</td></tr>'
-    : fichas.map(d => '<tr><td class="td-n">' + (d.nombre||'?') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.peso?d.peso+' kg':'—') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.altura?d.altura+' cm':'—') + '</td><td>' + (d.imc||'—') + '</td><td>' + (d.obraSocial||'—') + '</td><td>' + (d.objetivo||'—') + '</td><td>' + (d.declaracionJurada?'<span class="badge bg">✓</span>':'<span class="badge br">Pend</span>') + '</td><td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.fecha||'—') + '</td></tr>').join('');
+    : fichas.map(d => '<tr class="ficha-row" data-n="'+(d.nombre||'')+'" style="cursor:pointer" title="Ver ficha completa">' + '<td class="td-n">' + (d.nombre||'?') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.peso?d.peso+' kg':'—') + '</td><td style="font-family:JetBrains Mono,monospace">' + (d.altura?d.altura+' cm':'—') + '</td><td>' + (d.imc||'—') + '</td><td>' + (d.obraSocial||'—') + '</td><td>' + (d.objetivo||'—') + '</td><td>' + (d.declaracionJurada?'<span class="badge bg">✓</span>':'<span class="badge br">Pend</span>') + '</td><td style="font-family:JetBrains Mono,monospace;font-size:11px">' + (d.fecha||'—') + '</td></tr>').join('');
 }
 
 
@@ -1484,6 +1613,10 @@ async function renderSegList() {
     if (segFilter==='12c' && !plan.includes('12')) return false;
     if (segFilter==='8c' && !plan.includes('8')) return false;
     if (segFilter==='online' && !plan.toLowerCase().includes('online')) return false;
+    if (segFilter==='listas') {
+      const misSes = (window._sesiones||[]).filter(x=>x.nombre && x.nombre.trim().toLowerCase()===s.trim().toLowerCase());
+      if (!calcFaseProgreso(d, misSes).listo) return false;
+    }
     return true;
   });
 
@@ -1498,16 +1631,18 @@ async function renderSegList() {
     const esperadas = sesPorSem * 4;
     const restantes = Math.max(0, esperadas - st.sesMes);
     const hasAlert = restantes > esperadas * 0.5 && st.total > 0;
+    const misSes = (window._sesiones||[]).filter(x=>x.nombre && x.nombre.trim().toLowerCase()===s.trim().toLowerCase());
+    const fp = calcFaseProgreso(d, misSes);
 
     const item = document.createElement('div');
     item.className = 'seg-list-item' + (s===segSelected?' on':'');
     item.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center">' +
-        '<span class="sli-name">'+s+'</span>' +
+        '<span class="sli-name">'+s+(fp.listo?' <span style="background:var(--green-bg);color:var(--green);font-size:9px;font-weight:700;padding:1px 6px;border-radius:99px;vertical-align:middle">✅ AVANZAR</span>':'')+'</span>' +
         '<span style="font-size:10px;font-weight:600;color:'+(restantes>2?'var(--amber)':st.sesMes>=esperadas?'var(--green)':'var(--muted)')+'">'+st.sesMes+'/'+esperadas+'</span>' +
       '</div>' +
       '<div class="sli-meta">' +
-        '<span>'+(plan||'Sin plan')+'</span>' +
+        '<span>'+(plan||'Sin plan')+(d.fase?' · '+d.fase:'')+'</span>' +
         '<span style="color:'+(st.lastFecha?'var(--text2)':'var(--muted)')+'">'+( st.lastFecha||'Sin sesiones')+'</span>' +
       '</div>' +
       (d.metas?.length ? '<div style="font-size:10px;color:var(--amber);margin-top:2px">🎯 '+d.metas[0].texto+(d.metas[0].fecha?' · '+d.metas[0].fecha:'')+'</div>' : '');
@@ -1591,7 +1726,7 @@ async function renderSegProfile(nombre) {
     '</div>' +
     // TABS
     '<div class="seg-tabs">' +
-      ['resumen','progresión','historial','notas'].map(t=>
+      ['resumen','ficha','progresión','historial','notas'].map(t=>
         '<button class="seg-tab switchtab'+(t===segActiveTab?' on':'')+'" data-n="'+nombre+'" data-tab="'+t+'">' + t.charAt(0).toUpperCase()+t.slice(1)+'</button>'
       ).join('') +
     '</div>' +
@@ -1665,17 +1800,20 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
   if (tab === 'resumen') {
     const lastSes = misSesiones.slice(-1)[0];
     const prevSes = misSesiones.slice(-2,-1)[0];
+    const fp = calcFaseProgreso(d, misSesiones);
     el.innerHTML =
       // (nota urgente moved to profile header)
 
       // FASE Y CONTEXTO
       '<div class="seg-section">' +
-        '<div class="seg-section-title">📋 Fase de entrenamiento</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">' +
+        '<div class="seg-section-title">📋 Fase de entrenamiento' + (fp.listo ? ' <span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:6px">✅ LISTA PARA AVANZAR</span>' : '') + '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">' +
           '<div style="background:var(--bg3);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">FASE ACTUAL</div><div style="font-size:14px;font-weight:600;color:var(--white)">'+(d.fase||'Sin definir')+'</div></div>' +
-          '<div style="background:var(--bg3);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">INICIO</div><div style="font-size:14px;font-weight:600;color:var(--white)">'+(d.faseInicio||'—')+'</div></div>' +
+          '<div style="background:var(--bg3);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">INICIO</div><div style="font-size:14px;font-weight:600;color:var(--white)">'+(d.faseInicio||'—')+(fp.semanas!==null?' <span style="color:var(--muted);font-size:11px">('+fp.semanas+' sem)</span>':'')+'</div></div>' +
+          '<div style="background:'+(fp.listo?'var(--green-bg)':'var(--bg3)')+';border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">SESIONES EN FASE</div><div style="font-size:14px;font-weight:600;color:'+(fp.listo?'var(--green)':'var(--white)')+'">'+(fp.sesionesEnFase===null?'—':fp.sesionesEnFase+(fp.meta?'/'+fp.meta:''))+'</div></div>' +
           '<div style="background:var(--bg3);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">PRÓXIMA FASE</div><div style="font-size:14px;font-weight:600;color:var(--cel)">'+(d.faseSig||'—')+'</div></div>' +
         '</div>' +
+        (d.faseSig ? '<button onclick="avanzarFase(\''+nombre+'\')" style="margin-top:10px;background:'+(fp.listo?'var(--green)':'var(--bg3)')+';color:'+(fp.listo?'#000':'var(--text2)')+';border:1px solid '+(fp.listo?'var(--green)':'var(--border2)')+';border-radius:8px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">→ Avanzar a "'+d.faseSig+'"</button>' : '') +
       '</div>' +
       // ÚLTIMA SESIÓN DETALLADA
       (lastSes ?
@@ -1793,6 +1931,61 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
           '</div>' +
         '</div>';
       }).join('') + '</div>';
+
+  } else if (tab === 'ficha') {
+    const misFichas = (window._fichas||[])
+      .filter(f => f.nombre && f.nombre.trim().toLowerCase() === nombre.trim().toLowerCase())
+      .sort((a,b) => {
+        const ta = _parseFechaSesion(a.fecha), tb = _parseFechaSesion(b.fecha);
+        if (ta && tb && ta.getTime() !== tb.getTime()) return tb - ta;
+        return (b.hora||'').localeCompare(a.hora||'');
+      });
+
+    if (!misFichas.length) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">'+nombre+' todavía no completó su ficha desde el portal.</div>';
+      return;
+    }
+
+    const ultima = misFichas[0];
+    const CAMPOS = [
+      {g:'Datos personales', items:[['nacimiento','Nacimiento'],['dni','DNI'],['telefono','Teléfono'],['email','Email'],['direccion','Dirección'],['localidad','Localidad'],['ocupacion','Ocupación']]},
+      {g:'Salud', items:[['obraSocial','Obra social'],['nroAfiliado','N° afiliado'],['medico','Médico'],['telMedico','Tel. médico'],['lesiones','Lesiones'],['medicamentos','Medicamentos'],['actividadPrevia','Actividad previa'],['objetivo','Objetivo']]},
+      {g:'Medidas', items:[['peso','Peso','kg'],['altura','Altura','cm'],['imc','IMC'],['cintura','Cintura','cm'],['cadera','Cadera','cm'],['pecho','Pecho','cm'],['brazoDer','Brazo der.','cm'],['brazoIzq','Brazo izq.','cm'],['musloD','Muslo der.','cm'],['musloI','Muslo izq.','cm'],['pantorrilla','Pantorrilla','cm'],['cuello','Cuello','cm'],['grasa','% Grasa','%'],['masaMuscular','Masa muscular','kg'],['masaGrasa','Masa grasa','kg'],['aguaCorporal','Agua corporal','%']]}
+    ];
+
+    let html = '<div class="seg-section">';
+    html += '<div class="seg-section-title">🗂️ Ficha actual <span style="color:var(--muted);font-weight:400;font-size:11px">— completada '+(ultima.fecha||'?')+(ultima.hora?' · '+ultima.hora:'')+'</span></div>';
+    html += '<div style="background:'+(ultima.declaracionJurada?'var(--green-bg)':'var(--red-bg)')+';border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:'+(ultima.declaracionJurada?'var(--green)':'var(--red)')+'">'+(ultima.declaracionJurada?'✓ Declaración jurada de salud firmada':'⚠ Sin declaración jurada firmada')+(ultima.fechaFirma?' · '+ultima.fechaFirma:'')+'</div>';
+
+    CAMPOS.forEach(grupo => {
+      const conDato = grupo.items.filter(([k]) => ultima[k]);
+      if (!conDato.length) return;
+      html += '<div style="margin-bottom:14px">';
+      html += '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">'+grupo.g+'</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">';
+      conDato.forEach(([k,label,unidad]) => {
+        html += '<div style="background:var(--bg3);border-radius:8px;padding:8px 10px">'+
+          '<div style="font-size:9px;color:var(--muted);margin-bottom:2px">'+label+'</div>'+
+          '<div style="font-size:13px;color:var(--white);font-weight:600">'+ultima[k]+(unidad?' '+unidad:'')+'</div></div>';
+      });
+      html += '</div></div>';
+    });
+    html += '</div>';
+
+    // Historial de mediciones a lo largo del tiempo (si completó la ficha más de una vez)
+    if (misFichas.length > 1) {
+      html += '<div class="seg-section">';
+      html += '<div class="seg-section-title">📈 Evolución — '+misFichas.length+' fichas completadas</div>';
+      html += '<div class="tbl-wrap"><table><thead><tr><th>Fecha</th><th>Peso</th><th>IMC</th><th>Cintura</th><th>% Grasa</th><th>Objetivo</th></tr></thead><tbody>';
+      misFichas.forEach(f => {
+        html += '<tr><td style="font-family:JetBrains Mono,monospace;font-size:11px">'+(f.fecha||'—')+'</td>'+
+          '<td>'+(f.peso?f.peso+' kg':'—')+'</td><td>'+(f.imc||'—')+'</td><td>'+(f.cintura?f.cintura+' cm':'—')+'</td>'+
+          '<td>'+(f.grasa?f.grasa+'%':'—')+'</td><td style="font-size:11px;color:var(--muted)">'+(f.objetivo||'—')+'</td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    }
+
+    el.innerHTML = html;
 
   } else if (tab === 'historial') {
     if (!misSesiones.length) {
@@ -1962,11 +2155,12 @@ function editarAlumno(nombre) {
     '</div>'+    '<div style="margin-bottom:14px">'+
       '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📋 Fase actual</div>'+
       '<input type="text" id="edit-fase" value="'+(d.fase||'')+'" placeholder="Ej: PPG 3x10 RPE4" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;margin-bottom:8px">'+
-      '<div style="display:flex;gap:8px">'+
+      '<div style="display:flex;gap:8px;margin-bottom:8px">'+
         '<div style="flex:1"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Inicio</label><input type="text" id="edit-faseInicio" value="'+(d.faseInicio||'')+'" placeholder="ej: 01/07/2026" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none"></div>'+
         '<div style="flex:1"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Próxima fase</label><input type="text" id="edit-faseSig" value="'+(d.faseSig||'')+'" placeholder="ej: PEG 4x8" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:12px;color:var(--white);font-family:Inter,sans-serif;outline:none"></div>'+
         '<div style="width:80px"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Ses/semana</label><input type="number" id="edit-faseSes" value="'+(d.faseSesiones||3)+'" min="1" max="7" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;text-align:center"></div>'+
       '</div>'+
+      '<div style="width:180px"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Meta de sesiones para avanzar (opcional)</label><input type="number" id="edit-faseMeta" value="'+(d.faseMetaSesiones||'')+'" min="1" placeholder="ej: 12" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none;text-align:center"></div>'+
     '</div>'+
     '<div style="margin-bottom:14px">'+
       '<div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">💬 WhatsApp</div>'+
@@ -2018,23 +2212,56 @@ function guardarEdit() {
     if (texto) metas.push({texto, fecha});
   });
   d.metas = metas;
+  const planAnterior = d.planTipo || '';
   d.planTipo = window._editPlanTipo || d.planTipo || '';
+  const faseAnterior = d.fase || '';
   d.fase = document.getElementById('edit-fase')?.value?.trim() || '';
   d.faseInicio = document.getElementById('edit-faseInicio')?.value?.trim() || '';
   d.faseSig = document.getElementById('edit-faseSig')?.value?.trim() || '';
   d.sesPorSemana = parseInt(document.getElementById('edit-faseSes')?.value||'3');
   d.faseSesiones = d.sesPorSemana;
+  const metaVal = document.getElementById('edit-faseMeta')?.value?.trim();
+  d.faseMetaSesiones = metaVal ? parseInt(metaVal) : null;
   d.waNum = document.getElementById('edit-wa')?.value?.trim() || '';
+  // Si cambió la fase manualmente desde acá, lo dejamos en el historial también
+  if (faseAnterior !== d.fase) {
+    appendHistorial(d, 'fase', {de: faseAnterior, a: d.fase}, {inicio: d.faseInicio});
+    backupCambioDT(nombre, 'fase', faseAnterior, d.fase, 'Editado desde DT');
+  }
   // Nota nueva
   const notaTexto = document.getElementById('edit-nota')?.value?.trim();
   if (notaTexto) {
     if (!d.notas) d.notas = [];
     d.notas.push({fecha: new Date().toLocaleDateString('es-AR'), texto: notaTexto});
+    backupCambioDT(nombre, 'nota', '', notaTexto, 'Nota agregada desde DT');
+  }
+  if (planAnterior !== d.planTipo) {
+    backupCambioDT(nombre, 'plan', planAnterior, d.planTipo, 'Editado desde DT');
   }
   saveAlumnoData(nombre, d);
   closeEdit();
   renderSegList();
   showToast('✓ ' + nombre + ' actualizado');
+}
+
+// Avanza de fase con un clic: la fase actual pasa a ser "faseSig", se resetea
+// la fecha de inicio a hoy, y la fase vieja queda archivada en el historial
+// (nada se pierde — coherente con el resto del sistema).
+async function avanzarFase(nombre) {
+  const d = await getAlumnoData(nombre);
+  if (!d.faseSig) { alert('No hay una "próxima fase" definida para ' + nombre + '. Editá al alumno primero.'); return; }
+  const faseAnterior = d.fase || '';
+  const hoy = new Date();
+  const fechaHoy = hoy.getDate()+'/'+(hoy.getMonth()+1)+'/'+hoy.getFullYear();
+  appendHistorial(d, 'fase', {de: faseAnterior, a: d.faseSig}, {inicio: fechaHoy});
+  backupCambioDT(nombre, 'fase', faseAnterior, d.faseSig, 'Avance automático de fase (botón)');
+  d.fase = d.faseSig;
+  d.faseInicio = fechaHoy;
+  const nueva = prompt('¿Cuál es la próxima fase después de "'+d.fase+'"? (dejalo vacío si todavía no la definiste)', '');
+  d.faseSig = nueva ? nueva.trim() : '';
+  await saveAlumnoData(nombre, d);
+  showToast('✅ ' + nombre + ' avanzó a: ' + d.fase);
+  await selectSegStudent(nombre);
 }
 
 function closeEdit() { document.getElementById('edit-modal-bg').style.display = 'none'; }
@@ -2229,6 +2456,8 @@ document.addEventListener('click', async function(e) {
   }
   const row = e.target.closest('.nomina-row');
   if (row?.dataset.n) { goScreen('seguimiento'); setTimeout(() => selectSegStudent(row.dataset.n), 400); }
+  const fichaRow = e.target.closest('.ficha-row');
+  if (fichaRow?.dataset.n) { goScreen('seguimiento'); setTimeout(() => { selectSegStudent(fichaRow.dataset.n); switchSegTab(fichaRow.dataset.n, 'ficha'); }, 400); }
 });
 
 init().catch(e => console.error('Init error:', e));
