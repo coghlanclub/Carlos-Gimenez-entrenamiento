@@ -432,17 +432,26 @@ function _parseDoc(doc) {
   return obj;
 }
 
-// ── GET colección completa ───────────────────────────────────────────────────
+// ── GET colección completa (con paginado real) ───────────────────────────────
 async function _fbGetAll(col) {
+  const out = [];
+  let pageToken = '';
   try {
-    const r = await fetch(FB_URL + '/' + col + '?pageSize=200&key=' + FB_KEY_P);
-    if (!r.ok) return [];
-    const d = await r.json();
-    return (d.documents || []).map(doc => ({
-      ...(_parseDoc(doc)),
-      _id: doc.name.split('/').pop()
-    }));
-  } catch(e) { return []; }
+    for (let safety = 0; safety < 25; safety++) { // hasta 5000 docs, corta por las dudas
+      const url = FB_URL + '/' + col + '?pageSize=200&key=' + FB_KEY_P +
+                  (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+      const r = await fetch(url);
+      if (!r.ok) break; // devolvemos lo que hayamos juntado hasta acá
+      const d = await r.json();
+      (d.documents || []).forEach(doc => out.push({
+        ...(_parseDoc(doc)),
+        _id: doc.name.split('/').pop()
+      }));
+      if (!d.nextPageToken) break;
+      pageToken = d.nextPageToken;
+    }
+  } catch(e) { console.warn('[FB] Error _fbGetAll:', e); }
+  return out;
 }
 
 // ── Verificar si fecha pertenece a mes/año ───────────────────────────────────
@@ -456,33 +465,85 @@ function _fechaEsMes(fecha, mes1based, anio) {
          f.includes('/' + m0 + '/' + a);
 }
 
-// ── GUARDAR sesión ───────────────────────────────────────────────────────────
-window._fbGuardar = async function(col, datos) {
-  try {
-    const fields = {};
-    for (const [k, v] of Object.entries(datos)) {
-      if (v === null || v === undefined) continue;
-      if (typeof v === 'string')  fields[k] = {stringValue: v};
-      else if (typeof v === 'number')  fields[k] = {doubleValue: v};
-      else if (typeof v === 'boolean') fields[k] = {booleanValue: v};
-      else if (typeof v === 'object') {
-        const sf = {};
-        for (const [sk, sv] of Object.entries(v)) {
-          sf[sk] = typeof sv === 'string'  ? {stringValue: sv}  :
-                   typeof sv === 'number'  ? {doubleValue: sv}  :
-                   typeof sv === 'boolean' ? {booleanValue: sv} : {stringValue: String(sv)};
-        }
-        fields[k] = {mapValue: {fields: sf}};
+// ── GUARDAR sesión (con reintentos) ──────────────────────────────────────────
+function _fbToFields(datos) {
+  const fields = {};
+  for (const [k, v] of Object.entries(datos)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'string')  fields[k] = {stringValue: v};
+    else if (typeof v === 'number')  fields[k] = {doubleValue: v};
+    else if (typeof v === 'boolean') fields[k] = {booleanValue: v};
+    else if (typeof v === 'object') {
+      const sf = {};
+      for (const [sk, sv] of Object.entries(v)) {
+        sf[sk] = typeof sv === 'string'  ? {stringValue: sv}  :
+                 typeof sv === 'number'  ? {doubleValue: sv}  :
+                 typeof sv === 'boolean' ? {booleanValue: sv} : {stringValue: String(sv)};
       }
+      fields[k] = {mapValue: {fields: sf}};
     }
+  }
+  return fields;
+}
+
+// Intenta guardar UNA vez. Devuelve {ok, status} — status sirve para diagnosticar
+// (ej: 403 = reglas de Firebase vencidas, 400 = payload mal formado).
+async function _fbGuardarOnce(col, datos) {
+  try {
     const r = await fetch(FB_URL + '/' + col + '?key=' + FB_KEY_P, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({fields})
+      body: JSON.stringify({fields: _fbToFields(datos)})
     });
-    return r.ok;
-  } catch(e) { console.warn('[FB] Error guardar:', e); return false; }
+    if (!r.ok) console.warn('[FB] Guardado falló, status', r.status, col, datos);
+    return {ok: r.ok, status: r.status};
+  } catch(e) {
+    console.warn('[FB] Error de red al guardar:', e);
+    return {ok: false, status: 0};
+  }
+}
+
+// Guarda con hasta 3 intentos (espera 800ms entre cada uno). Si todos fallan,
+// encola en localStorage para reintentar más tarde (ver flushPendingSaves).
+window._fbGuardar = async function(col, datos) {
+  for (let intento = 0; intento < 3; intento++) {
+    const {ok} = await _fbGuardarOnce(col, datos);
+    if (ok) return true;
+    if (intento < 2) await new Promise(res => setTimeout(res, 800));
+  }
+  _queuePendingSave(col, datos);
+  return false;
 };
+
+// ── COLA LOCAL DE GUARDADOS PENDIENTES ───────────────────────────────────────
+// Si Firebase no responde (reglas vencidas, sin señal, etc.) no perdemos el
+// dato: lo guardamos acá y lo reintentamos la próxima vez que se abra la app.
+function _queuePendingSave(col, datos) {
+  try {
+    const pend = JSON.parse(localStorage.getItem('cg_pendientes') || '[]');
+    pend.push({col, datos, ts: Date.now()});
+    localStorage.setItem('cg_pendientes', JSON.stringify(pend));
+  } catch(e) { console.warn('[FB] No se pudo encolar pendiente:', e); }
+}
+
+async function flushPendingSaves() {
+  let pend;
+  try { pend = JSON.parse(localStorage.getItem('cg_pendientes') || '[]'); }
+  catch(e) { return; }
+  if (!pend.length) return;
+  const restantes = [];
+  for (const item of pend) {
+    const {ok} = await _fbGuardarOnce(item.col, item.datos);
+    if (!ok) restantes.push(item);
+  }
+  localStorage.setItem('cg_pendientes', JSON.stringify(restantes));
+  if (pend.length !== restantes.length) {
+    console.log('[FB] Sincronizados', pend.length - restantes.length, 'guardados pendientes.');
+  }
+}
+// Reintentar pendientes al abrir la app y cada 60s mientras esté abierta
+flushPendingSaves();
+setInterval(flushPendingSaves, 60000);
 
 // ── LEER rutina del DT ───────────────────────────────────────────────────────
 window._fbGetRutina = async function(nombre) {
@@ -850,17 +911,14 @@ function abrirDia(idx) {
 // ── CARGAR TODAS LAS RUTINAS DEL ALUMNO (meses anteriores) ──────────────────
 window._fbGetTodasRutinas = async function(nombre) {
   try {
-    const r = await fetch(FB_URL + '/rutinas?pageSize=200&key=' + FB_KEY_P);
-    if(!r.ok) return {};
-    const data = await r.json();
-    const docs = data.documents || [];
+    const docsRaw = await _fbGetAll('rutinas'); // ya pagina todas las rutinas, no solo las primeras 200
     const rutinas = {};
-    docs.forEach(doc => {
-      const id = decodeURIComponent(doc.name.split('/').pop());
+    docsRaw.forEach(doc => {
+      const id = doc._id;
       // Format: "Valentina_Julio 2026"
       if(id.toLowerCase().startsWith(nombre.toLowerCase() + '_')) {
         const mes = id.substring(nombre.length + 1);
-        const dataStr = doc.fields?.data?.stringValue;
+        const dataStr = doc.data;
         if(dataStr) {
           try { rutinas[mes] = JSON.parse(dataStr); } catch(e) {}
         }
@@ -1178,9 +1236,11 @@ async function guardarSesion() {
     }
   };
   
-  document.getElementById('ok-msg').textContent = `${alumnoActual} · ${diaLabel} · ${fecha}`;
-  
-  if(window._fbGuardar) await window._fbGuardar('sesiones', datos);
+  let guardadoOk = true;
+  if(window._fbGuardar) guardadoOk = await window._fbGuardar('sesiones', datos);
+  document.getElementById('ok-msg').textContent = guardadoOk
+    ? `${alumnoActual} · ${diaLabel} · ${fecha}`
+    : `${alumnoActual} · ${diaLabel} · ${fecha} (guardado local, se sincroniza solo)`;
   // También guardar en Google Sheets
   try {
     await fetch('https://script.google.com/macros/s/AKfycbz3HqxubOzSmg09tIJzGHHioV9THvGehtBssD__o4GDK4Eg5X7c9RKnnv0apth2luuPJA/exec', {
@@ -1269,9 +1329,11 @@ async function guardarFicha() {
     hora: new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}),
   };
   
-  document.getElementById('ok-msg').textContent = `Ficha de ${nombre} enviada a tu profe.`;
-  
-  if(window._fbGuardar) await window._fbGuardar('fichas', fichaData);
+  let fichaOk = true;
+  if(window._fbGuardar) fichaOk = await window._fbGuardar('fichas', fichaData);
+  document.getElementById('ok-msg').textContent = fichaOk
+    ? `Ficha de ${nombre} enviada a tu profe.`
+    : `Ficha de ${nombre} guardada local, se sincroniza sola.`;
   // También guardar en Google Sheets
   try {
     await fetch('https://script.google.com/macros/s/AKfycbz3HqxubOzSmg09tIJzGHHioV9THvGehtBssD__o4GDK4Eg5X7c9RKnnv0apth2luuPJA/exec', {
