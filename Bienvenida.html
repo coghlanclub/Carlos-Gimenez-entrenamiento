@@ -187,15 +187,12 @@ body{background:#0D1B2A;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,
     <div class="ok-icon">🐾</div>
     <div class="ok-title">¡Confirmado!</div>
     <div class="ok-sub" id="ok-msg"></div>
-    <div id="pdf-actions" style="margin-top:24px;display:flex;flex-direction:column;gap:10px;max-width:320px;margin-left:auto;margin-right:auto">
-      <button onclick="descargarPDF()" style="background:#0D1B2A;color:#9FC8FF;border:1px solid rgba(159,200,255,.3);border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+    <div style="margin-top:24px;max-width:320px;margin-left:auto;margin-right:auto">
+      <button onclick="descargarPDF()" style="width:100%;background:#14BE79;color:#000;border:none;border-radius:12px;padding:16px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.02em">
         ⬇ Descargar PDF firmado
       </button>
-      <button id="btn-wa" style="background:#25D366;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
-        📲 Enviar a Carlos por WhatsApp
-      </button>
+      <p style="font-size:11px;color:#7A8FA8;margin-top:10px;text-align:center">Descargalo y enviáselo a Carlos</p>
     </div>
-    <p style="font-size:11px;color:#7A8FA8;margin-top:14px;padding:0 20px">Descargá el PDF y adjuntalo en el WhatsApp que se va a abrir</p>
   </div>
 </div>
 
@@ -212,7 +209,7 @@ ctx.lineJoin = 'round';
 function pos(e) {
   const r = canvas.getBoundingClientRect();
   const sx = canvas.width / r.width, sy = canvas.height / r.height;
-  const src = e.touches ? e.touches[0] : e;
+  const src = (e.touches && e.touches.length) ? e.touches[0] : e;
   return { x:(src.clientX-r.left)*sx, y:(src.clientY-r.top)*sy };
 }
 
@@ -265,15 +262,21 @@ function clearCanvas() {
 document.getElementById('alumno-nombre').addEventListener('input', checkReady);
 
 function checkReady() {
-  const nombre = document.getElementById('alumno-nombre').value.trim();
-  document.getElementById('btn-confirm').disabled = !(nombre.length > 2 && hasSig);
+  document.getElementById('btn-confirm').disabled = !hasSig;
 }
 
 const BASE = 'https://firestore.googleapis.com/v1/projects/box-carlos-gimenez/databases/(default)/documents';
 const KEY  = 'AIzaSyAVFAm7Mg8zkaXbxYuvvCJvcm27Yunovdo';
 
 async function confirmar() {
-  const nombre  = document.getElementById('alumno-nombre').value.trim();
+  const nombre = document.getElementById('alumno-nombre').value.trim();
+  if(nombre.length < 2) {
+    document.getElementById('alumno-nombre').focus();
+    document.getElementById('alumno-nombre').style.borderColor = 'rgba(245,82,74,.8)';
+    document.getElementById('alumno-nombre').placeholder = '⚠ Ingresá tu nombre antes de confirmar';
+    setTimeout(()=>{ document.getElementById('alumno-nombre').style.borderColor=''; }, 3000);
+    return;
+  }
   const sigImg  = canvas.toDataURL('image/png');
   const fecha   = new Date().toISOString();
 
@@ -299,13 +302,6 @@ async function confirmar() {
   document.getElementById('ok-msg').innerHTML =
     '<strong style="color:#fff">' + nombre + '</strong><br>aceptó el acuerdo de entrenamiento<br>' +
     '<span style="font-size:11px;color:#7A8FA8">' + fechaFirma + '</span>';
-  
-  // WhatsApp button
-  const waMsg = encodeURIComponent('Hola Carlos! Te envío mi confirmación firmada del acuerdo de entrenamiento — ' + nombre + ' · ' + fechaFirma);
-  document.getElementById('btn-wa').onclick = () => {
-    descargarPDF();
-    setTimeout(() => window.open('https://wa.me/5491140456406?text=' + waMsg, '_blank'), 1500);
-  };
   
   window._pdfNombre = nombre;
   window._pdfFecha = fechaFirma;
