@@ -94,7 +94,7 @@ body{background:#0D1B2A;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,
 .spin{font-size:44px;animation:rspin 1s linear infinite}
 @keyframes rspin{to{transform:rotate(360deg)}}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<!-- html2pdf loaded on demand -->
 </head>
 <body>
 
@@ -316,6 +316,15 @@ async function confirmar() {
 }
 
 async function descargarPDF() {
+  // Load html2pdf on demand
+  if (!window.html2pdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
   // Build PDF content
   const el = document.createElement('div');
   el.style.cssText = 'background:#fff;color:#0D1B2A;font-family:Helvetica,Arial,sans-serif;padding:32px;max-width:580px';
@@ -346,7 +355,7 @@ async function descargarPDF() {
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#7A8FA8;margin-bottom:4px">Alumno/a</div>
         <div style="font-size:13px;font-weight:700">\${window._pdfNombre||''}</div>
         <div style="font-size:11px;color:#7A8FA8">\${window._pdfFecha||''}</div>
-        <img src="\${document.getElementById('sig-canvas').toDataURL()}" style="height:40px;margin-top:6px;border:1px solid #EEE;border-radius:4px">
+        <img src="${document.getElementById('sig-canvas').toDataURL()}" style="height:40px;margin-top:6px;border:1px solid #EEE;border-radius:4px">
       </div>
     </div>
   `;
