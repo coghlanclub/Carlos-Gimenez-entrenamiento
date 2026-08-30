@@ -233,21 +233,17 @@ function scheduleStamp() {
 function doStamp() {
   if(!hasSig || stamped) return;
   stamped = true;
-  // Distort the drawn signature with blur + fade
-  ctx.filter = 'blur(6px)';
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  ctx.putImageData(imgData, 0, 0);
   
-  // Fade out canvas, show garrita
-  canvas.style.transition = 'opacity .5s';
+  // Fade out signature, show garrita
+  canvas.style.transition = 'opacity .4s';
   canvas.style.opacity = '0';
   
   const stamp = document.getElementById('garrita-stamp');
   stamp.style.opacity = '1';
   
-  // Show text after stamp animation
   setTimeout(() => {
-    document.getElementById('juramento-txt').style.opacity = '1';
+    const txt = document.getElementById('juramento-txt');
+    if(txt) txt.style.opacity = '1';
   }, 500);
   
   checkReady();
