@@ -94,6 +94,7 @@ body{background:#0D1B2A;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,
 .spin{font-size:44px;animation:rspin 1s linear infinite}
 @keyframes rspin{to{transform:rotate(360deg)}}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
 
@@ -186,6 +187,15 @@ body{background:#0D1B2A;color:#fff;font-family:'Helvetica Neue',Helvetica,Arial,
     <div class="ok-icon">🐾</div>
     <div class="ok-title">¡Confirmado!</div>
     <div class="ok-sub" id="ok-msg"></div>
+    <div id="pdf-actions" style="margin-top:24px;display:flex;flex-direction:column;gap:10px;max-width:320px;margin-left:auto;margin-right:auto">
+      <button onclick="descargarPDF()" style="background:#0D1B2A;color:#9FC8FF;border:1px solid rgba(159,200,255,.3);border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+        ⬇ Descargar PDF firmado
+      </button>
+      <button id="btn-wa" style="background:#25D366;color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+        📲 Enviar a Carlos por WhatsApp
+      </button>
+    </div>
+    <p style="font-size:11px;color:#7A8FA8;margin-top:14px;padding:0 20px">Descargá el PDF y adjuntalo en el WhatsApp que se va a abrir</p>
   </div>
 </div>
 
@@ -289,11 +299,64 @@ async function confirmar() {
 
   document.getElementById('loading-screen').style.display = 'none';
   document.getElementById('ok-screen').style.display = 'block';
+  const fechaFirma = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'});
   document.getElementById('ok-msg').innerHTML =
     '<strong style="color:#fff">' + nombre + '</strong><br>aceptó el acuerdo de entrenamiento<br>' +
-    '<span style="font-size:11px;color:#7A8FA8">' +
-    new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'long',year:'numeric'}) +
-    '</span>';
+    '<span style="font-size:11px;color:#7A8FA8">' + fechaFirma + '</span>';
+  
+  // WhatsApp button
+  const waMsg = encodeURIComponent('Hola Carlos! Te envío mi confirmación firmada del acuerdo de entrenamiento — ' + nombre + ' · ' + fechaFirma);
+  document.getElementById('btn-wa').onclick = () => {
+    descargarPDF();
+    setTimeout(() => window.open('https://wa.me/5491140456406?text=' + waMsg, '_blank'), 1500);
+  };
+  
+  window._pdfNombre = nombre;
+  window._pdfFecha = fechaFirma;
+}
+
+async function descargarPDF() {
+  // Build PDF content
+  const el = document.createElement('div');
+  el.style.cssText = 'background:#fff;color:#0D1B2A;font-family:Helvetica,Arial,sans-serif;padding:32px;max-width:580px';
+  el.innerHTML = `
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#7A8FA8;margin-bottom:4px">bienvenida/o al</div>
+      <div style="font-size:24px;font-weight:900;color:#0D1B2A">Entrenamiento</div>
+      <div style="font-size:10px;color:#7A8FA8;margin-top:2px">Carlos Giménez · Entrenador Personal</div>
+    </div>
+    <hr style="border:none;border-top:1px solid #E0E0E0;margin:16px 0">
+    <p style="font-size:12px;line-height:1.7;color:#333;margin-bottom:12px">Cada clase tiene una duración de 1 hora a 40 minutos. El objetivo es siempre completar lo preparado para ese día, siendo flexible según las necesidades del momento.</p>
+    <p style="font-size:12px;line-height:1.7;color:#333;margin-bottom:12px">Las clases se realizan de manera presencial y online. Seguimiento personalizado vía app. Entrenamientos asincrónicos disponibles. En el plan híbrido, los días de asistencia quedan en el calendario.</p>
+    <p style="font-size:12px;line-height:1.7;color:#333;margin-bottom:12px">Las clases no asistidas pueden recuperarse durante el mismo mes, sujeto a cupos. En viajes, los honorarios del mes se abonan igual.</p>
+    <div style="background:#F0F7FF;border-left:3px solid #0D1B2A;border-radius:4px;padding:12px 14px;margin:16px 0">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#0D1B2A;margin-bottom:6px">Pagos</div>
+      <p style="font-size:12px;color:#333;margin-bottom:4px">Del 1 al 10 de cada mes · Mes adelantado · Transferencia o efectivo</p>
+      <p style="font-size:12px;color:#C0392B;font-weight:700">⚠ Pasada la fecha del 10 se aplicará un fee adicional.</p>
+      <p style="font-size:11px;color:#7A8FA8;margin-top:4px">Honorarios ajustables por inflación cada 3 a 6 meses con aviso previo.</p>
+    </div>
+    <hr style="border:none;border-top:1px solid #E0E0E0;margin:20px 0">
+    <div style="display:flex;justify-content:space-between;margin-top:8px">
+      <div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#7A8FA8;margin-bottom:4px">Entrenador</div>
+        <div style="font-size:13px;font-weight:700">Carlos Giménez</div>
+        <div style="font-size:11px;color:#7A8FA8">Entrenador Personal</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#7A8FA8;margin-bottom:4px">Alumno/a</div>
+        <div style="font-size:13px;font-weight:700">\${window._pdfNombre||''}</div>
+        <div style="font-size:11px;color:#7A8FA8">\${window._pdfFecha||''}</div>
+        <img src="\${document.getElementById('sig-canvas').toDataURL()}" style="height:40px;margin-top:6px;border:1px solid #EEE;border-radius:4px">
+      </div>
+    </div>
+  `;
+  
+  await html2pdf().set({
+    margin: 8,
+    filename: 'acuerdo_entrenamiento_' + (window._pdfNombre||'alumno').replace(/ /g,'_') + '.pdf',
+    html2canvas: {scale:2},
+    jsPDF: {unit:'mm',format:'a4',orientation:'portrait'}
+  }).from(el).save();
 }
 </script>
 </body>
