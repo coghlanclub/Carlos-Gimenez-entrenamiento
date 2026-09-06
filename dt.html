@@ -2191,6 +2191,7 @@ async function init() {
   await renderCalendario();
   await renderOnlineSection();
   await cargarDashboard();
+  sincronizarRutinas(); // Sync rutinas a Firebase en background
   // Sincronizar datos cada 30 segundos
   setInterval(cargarDashboard, 30000);
   setInterval(syncConfig, 30000);
@@ -2362,6 +2363,25 @@ async function agregarSesionRapida(nombre) {
     showToast('✅ Sesión agregada — '+nombre+' · '+fecha);
     setTimeout(()=>cargarDashboard(), 500);
   } catch(e){ alert('Error: '+e.message); }
+}
+
+
+// ── SINCRONIZAR RUTINAS → FIREBASE ────────────────────────────────────────────
+// Se ejecuta al iniciar el DT. Sube todas las rutinas del SEED_DATA a Firebase
+// para que el portal siempre lea desde ahí.
+async function sincronizarRutinas() {
+  const mes = SEED_MONTH;
+  const alumnos = SEED_DATA.order;
+  let ok = 0;
+  for (const nombre of alumnos) {
+    const rutina = SEED_DATA.students[nombre];
+    if (!rutina || Object.keys(rutina).length === 0) continue;
+    try {
+      await fsWrite('rutinas', nombre + '_' + mes, rutina);
+      ok++;
+    } catch(e) {}
+  }
+  console.log(`[DT] Rutinas sincronizadas: ${ok}/${alumnos.length}`);
 }
 
 </script>
