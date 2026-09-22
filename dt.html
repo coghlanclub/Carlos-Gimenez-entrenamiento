@@ -159,6 +159,7 @@ tr:hover td{background:var(--cel-dim)}
     <button class="ni" onclick="goScreen('tv')"><span style="font-size:15px"><i class="ti ti-device-tv"></i></span> TV / Tabata</button>
     <div class="nav-sec">Seguimiento</div>
     <button class="ni" onclick="goScreen('seguimiento')"><span style="font-size:15px">◎</span> Seguimiento</button>
+    <button class="ni" onclick="goScreen('historial-global')"><span style="font-size:15px">📅</span> Historial</button>
     <button class="ni" onclick="goScreen('calendario')"><span style="font-size:15px">◈</span> Calendario</button>
     <button class="ni" onclick="goScreen('fichas')"><span style="font-size:15px">◧</span> Fichas</button>
   </nav>
@@ -321,6 +322,25 @@ tr:hover td{background:var(--cel-dim)}
   <!-- CALENDARIO -->
   <div class="screen" id="s-calendario">
     <div id="cal-grid-wrap" class="cal-grid"></div>
+  </div>
+
+  <!-- HISTORIAL GLOBAL -->
+  <div class="screen" id="s-historial-global">
+    <div style="padding:20px 24px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div style="font-size:18px;font-weight:700;color:var(--white)">📅 Historial</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button onclick="hgPrevMes()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px">◀</button>
+          <span id="hg-mes-label" style="font-size:14px;font-weight:600;color:var(--cel);min-width:130px;text-align:center"></span>
+          <button onclick="hgNextMes()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px">▶</button>
+        </div>
+      </div>
+      <div id="hg-resumen" style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap"></div>
+      <div style="margin-bottom:10px">
+        <input id="hg-buscar" type="text" placeholder="🔍 Filtrar alumno..." oninput="hgFiltrar()" style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--white);font-family:Inter,sans-serif;outline:none">
+      </div>
+    </div>
+    <div id="hg-body" style="padding:0 24px 40px;overflow-y:auto"></div>
   </div>
 
   <!-- FICHAS -->
@@ -770,7 +790,7 @@ const DIAS = ['Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
 function slotCap(h) { return h === '15:00' ? 3 : 6; }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
-const TITLES = {resumen:'RESUMEN',nomina:'NÓMINA',profesor:'PROFESOR',tv:'TV · BOX',seguimiento:'SEGUIMIENTO',calendario:'CALENDARIO',fichas:'FICHAS'};
+const TITLES = {resumen:'RESUMEN',nomina:'NÓMINA',profesor:'PROFESOR',tv:'TV · BOX',seguimiento:'SEGUIMIENTO','historial-global':'HISTORIAL',calendario:'CALENDARIO',fichas:'FICHAS'};
 let currentProf = null, currentProfDay = 0, profEditMode = false, profCurrentRoutine = null;
 
 function goScreen(id) {
@@ -787,6 +807,7 @@ function goScreen(id) {
   if (id === 'tv') renderTvScreen();
   if (id === 'nomina') renderNomina();
   if (id === 'seguimiento') renderSegList();
+  if (id === 'historial-global') hgInit();
   if (id === 'calendario') { renderCalendario(); renderOnlineSection(); }
   actualizarMesUI();
 }
@@ -1820,7 +1841,7 @@ async function renderSegTab(nombre, tab, d, misSesiones) {
       msess.forEach(s => {
         const regs = s.registros ? Object.entries(s.registros).filter(([k,v])=>v&&v!=='') : [];
         const estC = (s.reporte?.estado||'').includes('Sin')?'var(--green)':(s.reporte?.estado||'').includes('Lesion')?'var(--red)':'var(--amber)';
-        return '<div class="hist-row">' +
+        html += '<div class="hist-row">' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
             '<div style="display:flex;gap:8px;align-items:center">' +
               '<span style="font-size:12px;font-weight:600;color:var(--cel)">'+(s.fecha||'?')+'</span>' +
@@ -2382,6 +2403,176 @@ async function sincronizarRutinas() {
     } catch(e) {}
   }
   console.log(`[DT] Rutinas sincronizadas: ${ok}/${alumnos.length}`);
+}
+
+// ── HISTORIAL GLOBAL ──────────────────────────────────────────────────────────
+let _hgMesActual = null; // {mes: 0-11, anio: 4-digit}
+let _hgSesionesCache = null;
+
+const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function hgParseFecha(f) {
+  // format: DD/MM/YYYY
+  if (!f) return null;
+  const p = f.split('/');
+  if (p.length < 3) return null;
+  return { dia: parseInt(p[0]), mes: parseInt(p[1])-1, anio: parseInt(p[2]) };
+}
+
+async function hgInit() {
+  const now = new Date();
+  if (!_hgMesActual) _hgMesActual = { mes: now.getMonth(), anio: now.getFullYear() };
+  hgRender();
+}
+
+function hgPrevMes() {
+  if (!_hgMesActual) return;
+  _hgMesActual.mes--;
+  if (_hgMesActual.mes < 0) { _hgMesActual.mes = 11; _hgMesActual.anio--; }
+  hgRender();
+}
+
+function hgNextMes() {
+  if (!_hgMesActual) return;
+  _hgMesActual.mes++;
+  if (_hgMesActual.mes > 11) { _hgMesActual.mes = 0; _hgMesActual.anio++; }
+  hgRender();
+}
+
+async function hgRender() {
+  const { mes, anio } = _hgMesActual;
+  document.getElementById('hg-mes-label').textContent = MESES_ES[mes] + ' ' + anio;
+  document.getElementById('hg-body').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Cargando...</div>';
+
+  // Load sessions (cache for speed)
+  if (!_hgSesionesCache || _hgSesionesCache.length === 0) {
+    _hgSesionesCache = await fsGet('sesiones');
+  }
+  const todas = _hgSesionesCache || [];
+
+  // Filter by selected month
+  const delMes = todas.filter(s => {
+    const p = hgParseFecha(s.fecha);
+    return p && p.mes === mes && p.anio === anio;
+  });
+
+  // Summary
+  const alumnosConSesion = [...new Set(delMes.map(s => s.nombre).filter(Boolean))];
+  const totalOrden = (SEED_DATA.order || []).filter(n => !['Carmen','Juan Cruz','Pablo','Sebas','Santiago','Sebastian'].includes(n));
+  const sinSesion = totalOrden.filter(n => !alumnosConSesion.includes(n));
+  document.getElementById('hg-resumen').innerHTML = [
+    {v: delMes.length, l: 'sesiones', c: 'var(--cel)'},
+    {v: alumnosConSesion.length, l: 'alumnos activos', c: 'var(--green)'},
+    {v: sinSesion.length, l: 'sin sesiones', c: 'var(--amber)'},
+  ].map(x => `<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 16px;min-width:80px;text-align:center">
+    <div style="font-size:20px;font-weight:700;color:${x.c}">${x.v}</div>
+    <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">${x.l}</div>
+  </div>`).join('');
+
+  // Group by alumno
+  const porAlumno = {};
+  delMes.forEach(s => {
+    const n = s.nombre || '?';
+    if (!porAlumno[n]) porAlumno[n] = [];
+    porAlumno[n].push(s);
+  });
+
+  // Sort by order
+  const ordenados = [...alumnosConSesion].sort((a,b) => {
+    const ia = SEED_DATA.order.indexOf(a);
+    const ib = SEED_DATA.order.indexOf(b);
+    return (ia<0?999:ia) - (ib<0?999:ib);
+  });
+
+  window._hgPorAlumno = porAlumno;
+  window._hgOrdenados = ordenados;
+  window._hgSinSesion = sinSesion;
+  hgRenderBody(ordenados, porAlumno, sinSesion);
+}
+
+function hgRenderBody(ordenados, porAlumno, sinSesion) {
+  let html = '';
+
+  if (!ordenados.length) {
+    html = '<div style="text-align:center;padding:60px 20px;color:var(--muted)"><div style="font-size:32px;margin-bottom:12px">📭</div><div>Sin sesiones registradas este mes.</div></div>';
+  } else {
+    // Alumnos con sesiones
+    ordenados.forEach(nombre => {
+      const seses = (porAlumno[nombre] || []).slice().sort((a,b) => {
+        const pa = hgParseFecha(a.fecha), pb = hgParseFecha(b.fecha);
+        if (!pa || !pb) return 0;
+        return (pa.dia + pa.mes*31) - (pb.dia + pb.mes*31);
+      });
+      const plan = SEG_DEFAULTS[nombre]?.planTipo || '';
+      html += `<div class="hg-card" style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;margin-bottom:14px;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer;user-select:none" onclick="hgToggle(this)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:34px;height:34px;background:var(--cel);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0">${nombre.charAt(0)}</div>
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--white)">${nombre}</div>
+              <div style="font-size:11px;color:var(--muted)">${plan}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="background:var(--bg3);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--green)">${seses.length} sesiones</div>
+            <span style="color:var(--muted);font-size:12px">▼</span>
+          </div>
+        </div>
+        <div class="hg-detail" style="display:none;padding:0 16px 14px;border-top:1px solid var(--border)">
+          ${seses.map(s => {
+            const regs = s.registros ? Object.entries(s.registros).filter(([k,v])=>v&&v!=='') : [];
+            const estC = (s.reporte?.estado||'').includes('Sin')?'var(--green)':(s.reporte?.estado||'').includes('Lesion')?'var(--red)':'var(--amber)';
+            return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="display:flex;gap:8px;align-items:center">
+                  <span style="font-size:12px;font-weight:600;color:var(--cel)">${s.fecha||'?'}</span>
+                  <span style="background:var(--bg3);color:var(--text2);font-size:10px;padding:1px 8px;border-radius:99px">${s.dia||'?'}</span>
+                </div>
+                <div style="display:flex;gap:8px;font-size:11px">
+                  ${s.reporte?.estado?`<span style="color:${estC}">${s.reporte.estado}</span>`:''}
+                  ${s.reporte?.rpe?`<span style="color:var(--muted)">RPE ${s.reporte.rpe}</span>`:''}
+                </div>
+              </div>
+              ${regs.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">${regs.map(([k,v])=>`<span style="font-size:11px;background:var(--bg3);padding:2px 8px;border-radius:6px;color:var(--text2)">${k.replace(/^\d+\s*[-–]\s*/,'')}<span style="color:var(--amber);font-family:monospace;font-weight:600;margin-left:4px">${v}</span></span>`).join('')}</div>` : ''}
+              ${s.reporte?.nota&&s.reporte.nota!=='—'?`<div style="font-size:11px;color:var(--muted);font-style:italic">"${s.reporte.nota}"</div>`:''}
+            </div>`;
+          }).join('')}
+          <button onclick="goScreen('seguimiento');setTimeout(()=>selectSegStudent('${nombre}'),400)" style="margin-top:10px;background:transparent;border:1px solid var(--border2);color:var(--cel);border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer">Ver seguimiento completo →</button>
+        </div>
+      </div>`;
+    });
+
+    // Alumnos sin sesiones este mes
+    if (sinSesion.length) {
+      html += `<div style="margin-top:20px;margin-bottom:8px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Sin sesiones este mes</div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px">${sinSesion.map(n=>`<span style="background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--muted);cursor:pointer" onclick="goScreen('seguimiento');setTimeout(()=>selectSegStudent('${n}'),400)">${n}</span>`).join('')}</div>`;
+    }
+  }
+
+  document.getElementById('hg-body').innerHTML = html;
+}
+
+function hgToggle(header) {
+  const detail = header.nextElementSibling;
+  const arrow = header.querySelector('span:last-child');
+  if (detail.style.display === 'none') {
+    detail.style.display = 'block';
+    if (arrow) arrow.textContent = '▲';
+  } else {
+    detail.style.display = 'none';
+    if (arrow) arrow.textContent = '▼';
+  }
+}
+
+function hgFiltrar() {
+  const q = (document.getElementById('hg-buscar')?.value || '').toLowerCase().trim();
+  if (!q) {
+    hgRenderBody(window._hgOrdenados, window._hgPorAlumno, window._hgSinSesion);
+    return;
+  }
+  const filtrados = (window._hgOrdenados||[]).filter(n => n.toLowerCase().includes(q));
+  const sinFiltrados = (window._hgSinSesion||[]).filter(n => n.toLowerCase().includes(q));
+  hgRenderBody(filtrados, window._hgPorAlumno, sinFiltrados);
 }
 
 </script>
