@@ -54,6 +54,7 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg); color:v
 .screen { display:none; }
 .screen.on { display:block; }
 .screen#s-tabata.on { display:flex; }
+.screen#s-tv.on { display:flex; }
 
 /* ── CARDS / METRICS ────────────────────────────────────────── */
 .metrics-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
@@ -436,7 +437,7 @@ body { font-feature-settings:"cv02","cv03","cv04","cv11"; }
     </div>
 
     <!-- ════ TV DEL BOX ══════════════════════════════════════ -->
-    <div class="screen" id="s-tv" style="padding:0;margin:-24px;background:var(--bg);min-height:100vh;display:flex;flex-direction:column;position:relative">
+    <div class="screen" id="s-tv" style="padding:0;margin:-24px;background:var(--bg);min-height:100vh;flex-direction:column;position:relative">
 
   <!-- ── TOP BAR ── -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:28px 60px 20px;border-bottom:2px solid rgba(107,184,245,0.15);flex-shrink:0">
