@@ -1505,7 +1505,7 @@ async function tvClear() {
 function openTvAdd() {
   const sel = document.getElementById('tv-add-nombre');
   sel.innerHTML = '<option value="">— seleccionar —</option>';
-  SEED_DATA.names.forEach(n => {
+  SEED_DATA.order.forEach(n => {
     const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
   });
   document.getElementById('tv-add-dia').innerHTML = '<option value="">— primero elegí alumno —</option>';
