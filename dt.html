@@ -164,19 +164,28 @@ html, body { height:100%; font-family:var(--sans); background:var(--bg); color:v
 
 /* ── TV SCREEN ───────────────────────────────────────────────── */
 #s-tv { background:var(--bg); }
-.tv-header { padding:24px 40px 0; display:flex; align-items:center; justify-content:space-between; }
-.tv-title { font-family:var(--display); font-size:56px; color:var(--cel); letter-spacing:3px; line-height:1; }
-.tv-subtitle { font-size:16px; color:var(--muted); margin-top:4px; font-family:var(--mono); }
-.tv-fecha { font-family:var(--mono); font-size:20px; color:var(--text2); text-align:right; }
-.tv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; padding:24px 40px; }
-.tv-card { background:var(--bg2); border:1px solid var(--border); border-radius:16px; padding:20px; text-align:center; }
-.tv-card .tv-name { font-family:var(--display); font-size:22px; color:var(--white); margin-bottom:8px; }
-.tv-card .tv-dia { font-size:14px; color:var(--cel); font-weight:600; margin-bottom:6px; }
-.tv-card .tv-plan { font-size:11px; color:var(--muted); }
-.tv-card .tv-check { font-size:28px; margin-bottom:8px; }
-.tv-today-label { padding:0 40px 12px; font-family:var(--display); font-size:20px; color:var(--green); letter-spacing:2px; }
-.tv-controls { position:fixed; bottom:20px; right:20px; display:flex; gap:8px; }
-.tv-ctrl-btn { padding:8px 16px; border:1px solid var(--border2); border-radius:8px; background:var(--bg3); color:var(--text2); font-size:12px; cursor:pointer; font-family:var(--sans); font-weight:600; }
+/* ── TV DEL BOX — optimizado para proyección ───────────── */
+.tv-header { padding:32px 56px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(107,184,245,0.12); }
+.tv-title { font-family:var(--display); font-size:72px; color:var(--cel); letter-spacing:4px; line-height:1; }
+.tv-subtitle { font-size:20px; color:var(--muted); margin-top:6px; font-family:var(--mono); letter-spacing:2px; }
+.tv-fecha { font-family:var(--mono); font-size:26px; color:var(--text2); text-align:right; }
+.tv-today-label { padding:18px 56px 0; font-family:var(--display); font-size:28px; color:var(--green); letter-spacing:3px; }
+.tv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:24px; padding:24px 56px 100px; }
+.tv-card {
+  background:linear-gradient(135deg,var(--bg2),rgba(107,184,245,0.05));
+  border:2px solid rgba(107,184,245,0.2);
+  border-radius:20px; padding:28px 32px;
+  transition:border-color .3s;
+}
+.tv-card .tv-name { font-family:var(--display); font-size:42px; color:var(--white); letter-spacing:1px; line-height:1.1; margin-bottom:6px; }
+.tv-card .tv-dia { font-size:18px; color:var(--cel); font-weight:700; margin-bottom:14px; letter-spacing:1px; font-family:var(--mono); }
+.tv-card .tv-plan { font-size:13px; color:var(--muted); }
+.tv-card .tv-check { font-size:36px; margin-bottom:10px; }
+.tv-card .ej-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; border-bottom:1px solid rgba(107,184,245,0.08); }
+.tv-card .ej-name { font-size:15px; color:var(--text2); }
+.tv-card .ej-sets { font-size:14px; color:var(--cel); font-family:var(--mono); white-space:nowrap; }
+.tv-controls { position:fixed; bottom:20px; right:20px; display:flex; gap:8px; z-index:100; }
+.tv-ctrl-btn { padding:10px 20px; border:1px solid var(--border2); border-radius:10px; background:rgba(10,22,40,0.92); backdrop-filter:blur(8px); color:var(--text2); font-size:13px; cursor:pointer; font-family:var(--sans); font-weight:700; letter-spacing:.5px; }
 .tv-ctrl-btn:hover { border-color:var(--cel); color:var(--cel); }
 
 /* ── FICHA ───────────────────────────────────────────────────── */
@@ -1574,21 +1583,20 @@ async function renderTvScreen() {
     card.className = 'tv-card';
     card.style.cssText = 'border-color:var(--green);background:linear-gradient(135deg,rgba(34,201,138,0.08),var(--bg2))';
     const ejList = ejercicios.map(e =>
-      `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid rgba(107,184,245,0.08)">
-        <span style="font-size:12px;color:var(--text2)">${e.name.replace(/^\d+ - /,'')}</span>
-        <span style="font-size:11px;color:var(--cel);white-space:nowrap;font-family:var(--mono)">${e.series}×${e.reps}</span>
+      `<div class="ej-row">
+        <span class="ej-name">${e.name.replace(/^\d+ - /,'').replace(/^[^ ]+ — /,'')}</span>
+        <span class="ej-sets">${e.series !== '—' ? e.series+'×'+e.reps : e.reps}</span>
       </div>`
     ).join('');
     card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="font-size:28px">💪</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div class="tv-name" style="font-size:20px">${nombre}</div>
+          <div class="tv-name">${nombre}</div>
           <div class="tv-dia">${dia}</div>
         </div>
-        <button onclick="tvRemove('${nombre}')" style="margin-left:auto;padding:3px 8px;background:rgba(245,82,74,.1);border:1px solid rgba(245,82,74,.3);border-radius:6px;color:var(--red);font-size:10px;cursor:pointer">✕</button>
+        <button onclick="tvRemove('${nombre}')" style="padding:4px 10px;background:rgba(245,82,74,.1);border:1px solid rgba(245,82,74,.3);border-radius:8px;color:var(--red);font-size:13px;cursor:pointer;margin-top:4px">✕</button>
       </div>
-      <div style="max-height:200px;overflow-y:auto">${ejList || '<span style="color:var(--muted);font-size:12px">Sin ejercicios</span>'}</div>
+      <div>${ejList || '<span style="color:var(--muted);font-size:15px">Sin ejercicios cargados</span>'}</div>
     `;
     grid.appendChild(card);
   });
