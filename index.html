@@ -2,8 +2,16 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Box · Entrenamiento</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#0A1628">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Entrenamiento">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -306,6 +314,37 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .ok-title{font-size:44px}
 .btn-volver{min-height:50px}
 @media (prefers-reduced-motion:reduce){.screen.on{animation:none}.ok-icon circle,.ok-icon path{animation:none;stroke-dashoffset:0}}
+
+/* ═══════════════ GUÍAS: CÓMO USAR LA APP Y AGREGAR AL INICIO ═══════════════ */
+.btn-ayuda{position:absolute;top:calc(14px + var(--safe-top,0px));right:16px;width:36px;height:36px;border-radius:50%;background:var(--bg2);border:1px solid var(--border2);color:var(--text2);font-size:16px;font-weight:700;cursor:pointer;z-index:2}
+.guia-overlay{position:fixed;inset:0;z-index:1000;display:none;background:rgba(3,8,15,.6)}
+.guia-overlay.on{display:block;animation:guiaFade .2s ease-out}
+@keyframes guiaFade{from{opacity:0}to{opacity:1}}
+.guia-uso{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;padding:calc(20px + env(safe-area-inset-top,0px)) 22px calc(20px + env(safe-area-inset-bottom,0px));overflow-y:auto;max-width:520px;margin:0 auto}
+.guia-top{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+.guia-link{background:none;border:none;color:var(--muted);font-size:13px;padding:8px 0 8px 8px;cursor:pointer;font-family:inherit}
+.guia-titulo{font-family:var(--display);font-size:38px;letter-spacing:.04em;line-height:1;color:var(--white);margin:22px 0 8px}
+.guia-sub{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+.guia-paso{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--border)}
+.guia-num{width:28px;height:28px;border-radius:50%;background:var(--green-bg);color:var(--green);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.guia-paso b{display:block;font-size:15px;color:var(--white);margin-bottom:3px}
+.guia-paso span.d{font-size:13px;color:var(--text2);line-height:1.45}
+.guia-k{display:inline-flex;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:1px 7px;font-weight:600;font-size:12px;color:var(--white);white-space:nowrap}
+.guia-pie{margin-top:auto;padding-top:20px;display:flex;flex-direction:column;gap:10px}
+.guia-btn{width:100%;min-height:52px;border-radius:14px;border:none;font-family:inherit;font-weight:700;font-size:15px;color:#05261A;background:linear-gradient(180deg,#1BD38C,#12B472);cursor:pointer}
+.guia-btn2{min-height:48px;border-radius:14px;background:transparent;border:1px solid var(--border2);color:var(--text2);font-family:inherit;font-size:14px;cursor:pointer;padding:0 16px}
+.guia-hoja{position:absolute;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:480px;margin:0 auto;background:var(--bg2);border:1px solid rgba(20,190,121,.35);border-radius:22px;padding:18px 18px 16px;box-shadow:0 -10px 40px rgba(0,0,0,.45);animation:guiaSube .25s ease-out}
+@keyframes guiaSube{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.guia-hoja-top{display:flex;gap:14px;align-items:center;margin-bottom:8px}
+.guia-hoja-top img{width:52px;height:52px;border-radius:13px;flex-shrink:0}
+.guia-hoja-t{font-weight:700;font-size:16px;line-height:1.25;color:var(--white)}
+.guia-hoja-s{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.4}
+.guia-hoja .guia-paso{padding:10px 0;align-items:center}
+.guia-hoja .guia-paso span.d{font-size:13.5px;color:var(--text)}
+.guia-nota{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:10px}
+.guia-botones{display:flex;gap:10px;margin-top:14px}
+.guia-botones .guia-btn{flex:1;min-height:48px}
+@media (prefers-reduced-motion:reduce){.guia-overlay.on,.guia-hoja{animation:none}}
 </style>
 </head>
 <body>
@@ -322,6 +361,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
     <!-- Title -->
     <div style="font-family:var(--display);font-size:30px;letter-spacing:.04em;color:var(--white);line-height:1;margin-bottom:6px">ENTRENAMIENTO</div>
     <div style="font-size:12px;color:var(--green);font-weight:600;letter-spacing:.15em;text-transform:uppercase">Carlos Giménez</div>
+    <button class="btn-ayuda" onclick="abrirGuiaUso()" aria-label="Cómo usar la app">?</button>
   </div>
 
   <!-- Search -->
@@ -1915,6 +1955,136 @@ async function testFirebase() {
 
 // ── FIREBASE ──────────────────────────────────────
 // Firebase loaded inline
+</script>
+
+<!-- ── GUÍA: CÓMO USAR LA APP ── -->
+<div class="guia-overlay" id="guia-uso" role="dialog" aria-modal="true" aria-labelledby="guia-uso-titulo">
+  <div class="guia-uso">
+    <div class="guia-top"><span>Cómo usar la app</span><button class="guia-link" onclick="cerrarGuiaUso()">Saltear</button></div>
+    <div class="guia-titulo" id="guia-uso-titulo">Tu entrenamiento<br>en 4 pasos</div>
+    <div class="guia-sub">Lo ves una sola vez. Para repasarlo, tocá el botón <span class="guia-k">?</span> arriba a la derecha.</div>
+    <div class="guia-paso"><span class="guia-num">1</span><div><b>Buscá tu nombre</b><span class="d">Escribí las primeras letras y tocá tu nombre en la lista.</span></div></div>
+    <div class="guia-paso"><span class="guia-num">2</span><div><b>Elegí el día</b><span class="d">Ves la rutina que te armó tu profe para hoy.</span></div></div>
+    <div class="guia-paso"><span class="guia-num">3</span><div><b>Anotá los kilos</b><span class="d">En cada ejercicio, escribí el peso que usaste. Si no sabés cómo se hace, tocá <span class="guia-k">▶ Ver técnica</span>.</span></div></div>
+    <div class="guia-paso"><span class="guia-num">4</span><div><b>Guardá y contá cómo te fue</b><span class="d">Contá cómo te sentiste y qué tan duro fue. Tu profe lo recibe al instante.</span></div></div>
+    <div class="guia-pie">
+      <button class="guia-btn2" id="guia-uso-instalar" style="display:none" onclick="cerrarGuiaUso(true)">📲 Cómo agregarla a mi pantalla de inicio</button>
+      <button class="guia-btn" onclick="cerrarGuiaUso()">Empezar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GUÍA: AGREGAR A LA PANTALLA DE INICIO ── -->
+<div class="guia-overlay" id="guia-instalar" role="dialog" aria-modal="true" aria-labelledby="guia-inst-titulo" onclick="if(event.target===this)posponerInstalar()">
+  <div class="guia-hoja">
+    <div class="guia-hoja-top">
+      <img src="icon-180.png" alt="">
+      <div><div class="guia-hoja-t" id="guia-inst-titulo">Agregá la app a tu pantalla de inicio</div><div class="guia-hoja-s">La abrís en un toque, como cualquier app, con este logo.</div></div>
+    </div>
+    <div id="guia-inst-pasos"></div>
+    <div class="guia-botones">
+      <button class="guia-btn" id="guia-inst-ok" onclick="aceptarInstalar()">Entendido</button>
+      <button class="guia-btn2" onclick="posponerInstalar()">Ahora no</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── GUÍAS: CÓMO USAR LA APP Y AGREGAR AL INICIO ─────────────────────────────
+(function() {
+  const ua = navigator.userAgent || '';
+  const esIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const esAndroid = /Android/.test(ua);
+  const esCelular = esIOS || esAndroid;
+  const enAppDeRedes = /Instagram|FBAN|FBAV|Line\/|TikTok|musical_ly/i.test(ua);
+  const esInstalada = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const leer = k => { try { return localStorage.getItem(k); } catch(e) { return null; } };
+  const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} };
+  const DIA = 24 * 60 * 60 * 1000;
+  let promptInstalar = null;
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    promptInstalar = e;
+    if (document.getElementById('guia-instalar').classList.contains('on')) armarPasosInstalar();
+  });
+  window.addEventListener('appinstalled', () => {
+    guardar('guia_instalar_hasta', String(Date.now() + 3650 * DIA));
+    document.getElementById('guia-instalar').classList.remove('on');
+  });
+
+  function puedeMostrarInstalar() {
+    return esCelular && !esInstalada();
+  }
+
+  function armarPasosInstalar() {
+    const pasos = document.getElementById('guia-inst-pasos');
+    const ok = document.getElementById('guia-inst-ok');
+    const nav = esIOS ? 'Safari' : 'Chrome';
+    let html = '';
+    if (enAppDeRedes) {
+      html += `<div class="guia-paso"><span class="guia-num">!</span><span class="d">Primero abrí este link en <b style="display:inline;font-size:inherit">${nav}</b>: tocá <span class="guia-k">⋯</span> y elegí <span class="guia-k">Abrir en el navegador</span>.</span></div>`;
+    }
+    if (esIOS) {
+      html += `<div class="guia-paso"><span class="guia-num">1</span><span class="d">Tocá <span class="guia-k">Compartir ⬆︎</span> en la barra del navegador</span></div>
+        <div class="guia-paso"><span class="guia-num">2</span><span class="d">Bajá y elegí <span class="guia-k">Agregar a inicio ⊞</span></span></div>
+        <div class="guia-paso"><span class="guia-num">3</span><span class="d">Tocá <span class="guia-k">Agregar</span> arriba a la derecha</span></div>`;
+      ok.textContent = 'Entendido';
+    } else if (promptInstalar) {
+      html += `<div class="guia-paso"><span class="guia-num">✓</span><span class="d">Tocá <b style="display:inline;font-size:inherit">Instalar</b> y confirmá. Listo.</span></div>`;
+      ok.textContent = 'Instalar';
+    } else {
+      html += `<div class="guia-paso"><span class="guia-num">1</span><span class="d">Tocá el menú <span class="guia-k">⋮</span> arriba a la derecha de Chrome</span></div>
+        <div class="guia-paso"><span class="guia-num">2</span><span class="d">Elegí <span class="guia-k">Agregar a pantalla principal</span> o <span class="guia-k">Instalar app</span></span></div>
+        <div class="guia-paso"><span class="guia-num">3</span><span class="d">Confirmá con <span class="guia-k">Agregar</span></span></div>`;
+      ok.textContent = 'Entendido';
+    }
+    pasos.innerHTML = html;
+  }
+
+  window.abrirGuiaInstalar = function() {
+    armarPasosInstalar();
+    document.getElementById('guia-instalar').classList.add('on');
+  };
+
+  window.aceptarInstalar = async function() {
+    document.getElementById('guia-instalar').classList.remove('on');
+    if (promptInstalar && !esIOS) {
+      promptInstalar.prompt();
+      try { await promptInstalar.userChoice; } catch(e) {}
+      promptInstalar = null;
+    }
+    guardar('guia_instalar_hasta', String(Date.now() + 14 * DIA));
+  };
+
+  window.posponerInstalar = function() {
+    document.getElementById('guia-instalar').classList.remove('on');
+    guardar('guia_instalar_hasta', String(Date.now() + 3 * DIA));
+  };
+
+  function tocaMostrarInstalar() {
+    return puedeMostrarInstalar() && Date.now() > Number(leer('guia_instalar_hasta') || 0);
+  }
+
+  window.abrirGuiaUso = function() {
+    document.getElementById('guia-uso-instalar').style.display = puedeMostrarInstalar() ? '' : 'none';
+    document.getElementById('guia-uso').classList.add('on');
+  };
+
+  window.cerrarGuiaUso = function(irAInstalar) {
+    document.getElementById('guia-uso').classList.remove('on');
+    const primeraVez = !leer('guia_uso_vista');
+    guardar('guia_uso_vista', '1');
+    if (irAInstalar === true || (primeraVez && tocaMostrarInstalar())) setTimeout(abrirGuiaInstalar, 350);
+  };
+
+  function iniciarGuias() {
+    if (!leer('guia_uso_vista')) abrirGuiaUso();
+    else if (tocaMostrarInstalar()) setTimeout(abrirGuiaInstalar, 1200);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciarGuias);
+  else iniciarGuias();
+})();
 </script>
 </body>
 </html>
