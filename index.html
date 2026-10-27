@@ -344,6 +344,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .guia-nota{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:10px}
 .guia-botones{display:flex;gap:10px;margin-top:14px}
 .guia-botones .guia-btn{flex:1;min-height:48px}
+.guia-inst{margin-top:18px;padding-top:18px;border-top:1px solid var(--border2)}
+.guia-inst-t{font-weight:700;font-size:16px;color:var(--white);margin-bottom:4px}
+.guia-inst-s{font-size:12.5px;color:var(--muted);line-height:1.45;margin-bottom:12px}
+.guia-sis{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.guia-sis.tuyo{border-color:rgba(20,190,121,.45)}
+.guia-sis-t{font-weight:700;font-size:13px;color:var(--white);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.guia-sis-tag{font-size:10.5px;font-weight:600;color:var(--green);background:var(--green-bg);padding:1px 8px;border-radius:99px}
+.guia-sis ol{margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.7}
+.guia-ya{font-size:13px;color:var(--green);background:var(--green-bg);border-radius:12px;padding:10px 12px;margin-bottom:10px}
 @media (prefers-reduced-motion:reduce){.guia-overlay.on,.guia-hoja{animation:none}}
 </style>
 </head>
@@ -1967,8 +1976,21 @@ async function testFirebase() {
     <div class="guia-paso"><span class="guia-num">2</span><div><b>Elegí el día</b><span class="d">Ves la rutina que te armó tu profe para hoy.</span></div></div>
     <div class="guia-paso"><span class="guia-num">3</span><div><b>Anotá los kilos</b><span class="d">En cada ejercicio, escribí el peso que usaste. Si no sabés cómo se hace, tocá <span class="guia-k">▶ Ver técnica</span>.</span></div></div>
     <div class="guia-paso"><span class="guia-num">4</span><div><b>Guardá y contá cómo te fue</b><span class="d">Contá cómo te sentiste y qué tan duro fue. Tu profe lo recibe al instante.</span></div></div>
+    <div class="guia-inst">
+      <div class="guia-inst-t">📲 Guardala en tu pantalla de inicio</div>
+      <div class="guia-inst-s">Así la abrís en un toque, con el logo, como cualquier app. Si entraste desde Instagram o WhatsApp, primero abrí el link en Safari o Chrome.</div>
+      <div class="guia-ya" id="guia-ya" style="display:none">✓ Ya la estás usando desde tu pantalla de inicio.</div>
+      <div class="guia-sis" id="guia-sis-ios">
+        <div class="guia-sis-t">iPhone <span class="guia-sis-tag" style="display:none">Tu celular</span></div>
+        <ol><li>Abrí la app en <b>Safari</b></li><li>Tocá <span class="guia-k">Compartir ⬆︎</span></li><li>Bajá y elegí <span class="guia-k">Agregar a inicio ⊞</span></li><li>Tocá <span class="guia-k">Agregar</span></li></ol>
+      </div>
+      <div class="guia-sis" id="guia-sis-android">
+        <div class="guia-sis-t">Android <span class="guia-sis-tag" style="display:none">Tu celular</span></div>
+        <ol><li>Abrí la app en <b>Chrome</b></li><li>Tocá el menú <span class="guia-k">⋮</span> arriba a la derecha</li><li>Elegí <span class="guia-k">Agregar a pantalla principal</span> o <span class="guia-k">Instalar app</span></li><li>Confirmá con <span class="guia-k">Agregar</span></li></ol>
+      </div>
+    </div>
     <div class="guia-pie">
-      <button class="guia-btn2" id="guia-uso-instalar" style="display:none" onclick="cerrarGuiaUso(true)">📲 Cómo agregarla a mi pantalla de inicio</button>
+      <button class="guia-btn2" id="guia-uso-instalar" style="display:none" onclick="cerrarGuiaUso(true)">📲 Instalar ahora</button>
       <button class="guia-btn" onclick="cerrarGuiaUso()">Empezar</button>
     </div>
   </div>
@@ -2067,7 +2089,15 @@ async function testFirebase() {
   }
 
   window.abrirGuiaUso = function() {
-    document.getElementById('guia-uso-instalar').style.display = puedeMostrarInstalar() ? '' : 'none';
+    document.getElementById('guia-uso-instalar').style.display = (promptInstalar && puedeMostrarInstalar()) ? '' : 'none';
+    document.getElementById('guia-ya').style.display = esInstalada() ? '' : 'none';
+    const ios = document.getElementById('guia-sis-ios'), android = document.getElementById('guia-sis-android');
+    [ios, android].forEach(el => { el.classList.remove('tuyo'); el.querySelector('.guia-sis-tag').style.display = 'none'; });
+    const tuyo = esIOS ? ios : esAndroid ? android : null;
+    if (tuyo) {
+      tuyo.classList.add('tuyo'); tuyo.querySelector('.guia-sis-tag').style.display = '';
+      tuyo.parentNode.insertBefore(tuyo, document.getElementById('guia-sis-ios'));
+    }
     document.getElementById('guia-uso').classList.add('on');
   };
 
@@ -2075,7 +2105,8 @@ async function testFirebase() {
     document.getElementById('guia-uso').classList.remove('on');
     const primeraVez = !leer('guia_uso_vista');
     guardar('guia_uso_vista', '1');
-    if (irAInstalar === true || (primeraVez && tocaMostrarInstalar())) setTimeout(abrirGuiaInstalar, 350);
+    if (irAInstalar === true && promptInstalar) { aceptarInstalar(); return; }
+    if (primeraVez && tocaMostrarInstalar()) setTimeout(abrirGuiaInstalar, 350);
   };
 
   function iniciarGuias() {
